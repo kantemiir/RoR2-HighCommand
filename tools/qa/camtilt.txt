@@ -1,0 +1,52 @@
+# Middle button tilt at any zoom and from anywhere: zoomed in close with the wheel (the zoom tilt lowers the view), a
+# middle drag down must still bring the view straight down (pitch=90), a drag up lays it along the ground (pitch=2),
+# also when the drag starts over a panel (the minimap corner). hc_cam info prints the shown pitch.
+@wait 4
+@log === T1 run start
+hc_start
+@scene lobby
+@wait 3
+pregame_start_run
+@run
+@wait 15
+@log === T2 golemplains
+hc_next_stage golemplains
+@wait 25
+hc_cam army
+@wait 2
+hc_mouse 960 540
+hc_scroll 12
+@wait 2
+@log === T3 zoomed in by the wheel
+hc_cam info
+hc_screenshot camtilt_close
+hc_drag 960 800 960 300 mid
+@wait 2
+@log === T4 dragged down: straight from above
+hc_cam info
+hc_screenshot camtilt_top
+hc_drag 960 300 960 900 mid
+@wait 2
+@log === T5 dragged up: along the ground
+hc_cam info
+hc_screenshot camtilt_flat
+hc_drag 1850 150 1850 100 mid
+hc_drag 1850 900 1850 500 mid
+@wait 2
+@log === T6 dragged from the minimap corner
+hc_cam info
+hc_mouse 960 540
+hc_scroll -12
+@wait 2
+@log === T7 zoomed out: keeps the chosen tilt
+hc_cam info
+hc_input_end
+hc_key Home
+@wait 2
+@log === T8 Home
+hc_cam info
+@log === END
+disconnect
+@norun
+@wait 4
+@quit

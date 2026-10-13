@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+* Camera tilt: the middle button tilts the view at any zoom and from anywhere, from almost along the ground (2°) to
+  straight down at the map (90°). Before, close up the zoom tilt held the view down near the ground, so the drag did
+  little; now the zoom tilt is a step of the wheel (zooming in lowers the tilt, zooming out brings back the one you set)
+  and the drag always wins. The drag may start over a panel, and it goes on when the pointer reaches the screen edge.
+  Scenario `tools\qa\camtilt.txt`.
+
 ## 0.14.0 - free camera, new ability tiles
 
 Camera rebuilt (studied 0 A.D., Spring, StarCraft II, Company of Heroes, Total War; notes in `docs\dev\CAMERA.md`)

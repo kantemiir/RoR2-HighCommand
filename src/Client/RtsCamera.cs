@@ -45,17 +45,30 @@ namespace HighCommand.Client
         // ZoomTilt: from this far above the nearest zoom the view starts lowering, down to LowPitch at the nearest zoom
         private const float ZoomTiltRange = 30f, LowPitch = 16f;
 
-        /// <summary>
-        /// The player's tilt, lowered towards the ground as the camera comes close (Company of Heroes, Total War: far
-        /// away a map, close up a side view of the heroes). A tilt already lower than that is left alone.
-        /// </summary>
-        private float ViewPitch()
+        /// <summary>The tilt as shown (smoothed). The zoom tilt is not laid over it: it is a step of the wheel (see Zoom).</summary>
+        private float ViewPitch() => pitchReady ? smoothPitch : Settings.CameraPitch.Value;
+
+        /// <summary>0 far away .. 1 at the nearest zoom, eased: how far the zoom tilt has lowered the view.</summary>
+        private static float ZoomTiltShare(float atDistance)
         {
-            float tilt = pitchReady ? smoothPitch : Settings.CameraPitch.Value;
-            if (!Settings.ZoomTilt.Value) return tilt;
-            float k = 1f - Mathf.Clamp01((smoothDistance - Settings.CameraMinDistance.Value) / ZoomTiltRange);
-            k = k * k * (3f - 2f * k);
-            return Mathf.Lerp(tilt, Mathf.Min(tilt, LowPitch), k);
+            float k = 1f - Mathf.Clamp01((atDistance - Settings.CameraMinDistance.Value) / ZoomTiltRange);
+            return k * k * (3f - 2f * k);
+        }
+
+        /// <summary>
+        /// The zoom tilt (Company of Heroes, Total War: far away a map, close up a side view of the heroes) as a change of
+        /// the tilt itself, made by the wheel: zooming in lowers the tilt towards LowPitch, zooming out brings it back
+        /// towards the tilt the player chose. Between two turns of the wheel the tilt is the player's alone, so the middle
+        /// button tilts the view at any zoom (laid over the view, the zoom tilt held it down close to the ground).
+        /// </summary>
+        private void ZoomTilt(float before, float after)
+        {
+            if (!Settings.ZoomTilt.Value) return;
+            float kBefore = ZoomTiltShare(before), kAfter = ZoomTiltShare(after);
+            if (kAfter > kBefore && pitch > LowPitch && kBefore < 0.999f)
+                pitch = Mathf.Lerp(pitch, LowPitch, (kAfter - kBefore) / (1f - kBefore));
+            else if (kAfter < kBefore && kBefore > 0.001f)
+                pitch = Mathf.Lerp(pitch, chosenPitch, (kBefore - kAfter) / kBefore);
         }
 
         // ---- wanted state (input) ----------------------------------------------------------------
@@ -65,11 +78,12 @@ namespace HighCommand.Client
         private float yaw = StartYaw;
         private float distance = StartDistance;
         private float pitch;
+        private float chosenPitch; // the tilt the player set (the middle button, the keys, the options): the zoom tilt comes back to it
         private bool pitchReady;
         private float configPitch;
 
-        // the player may lay the camera almost on the ground (it then only tilts up as far as the ground makes it)
-        private const float MinPitch = 4f, MaxPitch = 89f;
+        // the player may lay the camera almost along the ground or look straight down at the map
+        private const float MinPitch = 2f, MaxPitch = 90f;
 
         // ---- shown state (smoothed) --------------------------------------------------------------
 
@@ -251,7 +265,7 @@ namespace HighCommand.Client
         internal void SetAngles(float? newYaw, float? newPitch)
         {
             if (newYaw.HasValue) yaw = newYaw.Value;
-            if (newPitch.HasValue) pitch = Mathf.Clamp(newPitch.Value, MinPitch, MaxPitch);
+            if (newPitch.HasValue) pitch = chosenPitch = Mathf.Clamp(newPitch.Value, MinPitch, MaxPitch);
         }
 
         // ---- testing (hc_cam sweep) --------------------------------------------------------------
@@ -326,14 +340,14 @@ namespace HighCommand.Client
             if (dt <= 0f) return;
 
             Vector2 mouse = ClientInput.Mouse;
-            Vector2 mouseDelta = mouse - lastMouse;
+            Vector2 mouseDelta = MouseMotion(mouse - lastMouse, mouse);
             lastMouse = mouse;
 
             if (!initialised) return;
 
-            // a turn / tilt with the middle button begun in the world goes on over the panels until the button is let go
-            if (!ClientInput.MouseHeld(2) || PauseManager.isPaused) rotating = false;
-            else if (ClientInput.MouseDown(2) && !ClientInput.PointerOverUi) rotating = true;
+            // the middle button turns / tilts the view wherever it is pressed (the panels have no use for it) and as long
+            // as it is held
+            rotating = ClientInput.MouseHeld(2) && !PauseManager.isPaused;
 
             // --- pan ---
             Vector2 move = Vector2.zero;
@@ -390,6 +404,7 @@ namespace HighCommand.Client
                 float factor = Mathf.Pow(0.88f, scroll * Settings.CameraZoomSpeed.Value);
                 float before = distance;
                 distance = Mathf.Clamp(distance * factor, Settings.CameraMinDistance.Value, Settings.CameraMaxDistance.Value);
+                ZoomTilt(before, distance);
 
                 // Free camera: towards the point under the mouse in all three directions (the middle of the screen with
                 // ZoomToCursor off). The look-at point moves the same share of the way to it as the distance shrinks, so
@@ -429,7 +444,7 @@ namespace HighCommand.Client
             if (ClientInput.KeyDown(Settings.KeyResetCamera.Value))
             {
                 yaw = StartYaw;
-                pitch = Settings.CameraPitch.Value;
+                pitch = chosenPitch = Settings.CameraPitch.Value;
                 distance = Mathf.Clamp(StartDistance, Settings.CameraMinDistance.Value, Settings.CameraMaxDistance.Value);
                 if (FreeCamera) LevelOnGround(focusXZ, level + LookUp + 0.5f);
             }
@@ -437,6 +452,7 @@ namespace HighCommand.Client
             // --- rotate ---
             float rotate = Settings.CameraRotateSpeed.Value;
             float tilt = Settings.CameraTiltSpeed.Value;
+            float tiltBefore = pitch;
             if (rotating)
             {
                 yaw += mouseDelta.x * 0.22f * rotate;
@@ -448,13 +464,15 @@ namespace HighCommand.Client
             if (ClientInput.Key(Settings.KeyRotateRight.Value)) yaw += 90f * rotate * dt;
             if (ClientInput.Key(Settings.KeyTiltUp.Value)) pitch -= 45f * tilt * dt;
             if (ClientInput.Key(Settings.KeyTiltDown.Value)) pitch += 45f * tilt * dt;
+            pitch = Mathf.Clamp(pitch, MinPitch, MaxPitch);
+            if (pitch != tiltBefore) chosenPitch = pitch;
 
             // the start tilt of the options is applied at the start and whenever it is changed there
             float configNow = Settings.CameraPitch.Value;
             if (!pitchReady || !Mathf.Approximately(configNow, configPitch))
             {
                 configPitch = configNow;
-                pitch = configNow;
+                pitch = chosenPitch = configNow;
                 if (!pitchReady) smoothPitch = configNow;
                 pitchReady = true;
             }
@@ -496,6 +514,40 @@ namespace HighCommand.Client
             smoothHeight = smooth <= 0.001f ? wantHeight
                 : Mathf.SmoothDamp(smoothHeight, wantHeight, ref heightVelocity, heightTime, float.PositiveInfinity, dt);
             smoothFocus = new Vector3(smoothXZ.x, smoothHeight, smoothXZ.y);
+        }
+
+        // pixels of pointer motion per unit of the raw "Mouse X/Y" axes, learned while both move (about 10 with the stock
+        // axis sensitivity of 0.1); NaN once the axes turned out not to exist
+        private float axisPixels = 10f;
+
+        /// <summary>
+        /// How far the mouse moved this frame, in pixels. Where the pointer is held by the screen edge (or the window's)
+        /// its position stops while the hand goes on: there the raw mouse axes give the motion, so a turn or a tilt with
+        /// the middle button never stops at the edge.
+        /// </summary>
+        private Vector2 MouseMotion(Vector2 moved, Vector2 at)
+        {
+            if (ClientInput.Synthetic || float.IsNaN(axisPixels)) return moved;
+            float ax, ay;
+            try
+            {
+                ax = Input.GetAxisRaw("Mouse X");
+                ay = Input.GetAxisRaw("Mouse Y");
+            }
+            catch (ArgumentException)
+            {
+                axisPixels = float.NaN;
+                return moved;
+            }
+
+            bool edgeX = at.x <= 0f || at.x >= Screen.width - 1;
+            bool edgeY = at.y <= 0f || at.y >= Screen.height - 1;
+            // learn the scale where the pointer moves freely
+            if (!edgeX && Mathf.Abs(ax) > 0.05f && Mathf.Abs(moved.x) > 1f && Mathf.Sign(ax) == Mathf.Sign(moved.x))
+                axisPixels = Mathf.Clamp(Mathf.Lerp(axisPixels, moved.x / ax, 0.1f), 1f, 200f);
+            if (Mathf.Abs(moved.x) < 0.5f && Mathf.Abs(ax) > 0.001f && edgeX) moved.x = ax * axisPixels;
+            if (Mathf.Abs(moved.y) < 0.5f && Mathf.Abs(ay) > 0.001f && edgeY) moved.y = ay * axisPixels;
+            return moved;
         }
 
         /// <summary>
@@ -675,7 +727,7 @@ namespace HighCommand.Client
             HideOccluders();
         }
 
-        private const float SteepestPitch = 88f;
+        private const float SteepestPitch = 90f;
         private const float LiftUpTime = 0.25f, LiftDownTime = 0.6f;
         private const float ProbeRadius = 0.6f; // m around the camera that must be out of the ground too (the near plane)
         private float liftPitch, liftVelocity;
@@ -972,7 +1024,7 @@ namespace HighCommand.Client
             FollowTarget = null;
             hasAnchor = false;
             yaw = smoothYaw = s.y;
-            pitch = smoothPitch = Settings.CameraPitch.Value;
+            pitch = smoothPitch = chosenPitch = Settings.CameraPitch.Value;
             distance = smoothDistance = 31f;
             focusXZ = ClampXZ(new Vector2(s.x, s.z));
             LevelOnGround(focusXZ);
