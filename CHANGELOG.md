@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.15.0 - order marks like the game's ping, camera tilt anywhere
 
 * Order marks in the look of the game's ping, no more line and ring on the ground after every order:
   * the click: a shockwave and a flash on the ground for a moment (also on alerts);
