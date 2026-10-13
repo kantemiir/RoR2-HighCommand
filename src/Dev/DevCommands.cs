@@ -498,6 +498,7 @@ namespace HighCommand.Dev
                 case "huntrange": Settings.EnemyHuntRange.Value = float.Parse(value, System.Globalization.CultureInfo.InvariantCulture); break;
                 case "uiscale": Settings.UiScale.Value = float.Parse(value, System.Globalization.CultureInfo.InvariantCulture); break;
                 case "allowhidden": Settings.AllowHiddenSurvivors.Value = bool.Parse(value); break;
+                case "startingheroes": Settings.StartingHeroes.Value = int.Parse(value); break;
                 default: throw new ConCommandException("Unknown setting.");
             }
             PublishSettings();

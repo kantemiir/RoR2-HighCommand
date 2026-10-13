@@ -1,0 +1,130 @@
+# AI behaviour baseline: the same tests before and after AI changes (hc_ai report after each part).
+# Army: the lobby survivor + Merc, Huntress, Loader, Commando, Croco (melee and ranged mixed).
+@wait 4
+@log === A0 run start
+hc_cfg startingheroes 1
+hc_start
+@scene lobby
+@wait 3
+pregame_start_run
+@run
+@wait 22
+# the same map every time: the results are comparable
+hc_next_stage golemplains
+@wait 20
+hc_cfg ignoreunlocks true
+hc_gold 200000
+hc_recruit Merc
+hc_recruit Huntress
+hc_recruit Loader
+hc_recruit Commando
+hc_recruit Croco
+@wait 6
+hc_kill_enemies
+hc_cfg autobarrels false
+hc_cfg autochests false
+hc_status
+@log === A1 idle army, 8 lemurians 35 m around (mortal heroes, no orders)
+hc_ai reset
+hc_spawn 8 LemurianMaster 35
+@wait 25
+hc_ai
+hc_status
+@log === A2 golems and beetles (dangerous mix), still no orders
+hc_kill_enemies
+hc_revive
+hc_revive
+hc_revive
+@wait 3
+hc_ai reset
+hc_spawn 2 GolemMaster 30
+hc_spawn 6 BeetleMaster 25
+@wait 30
+hc_ai
+hc_status
+@log === A3 flying wisps
+hc_kill_enemies
+hc_revive
+hc_revive
+hc_revive
+@wait 3
+hc_ai reset
+hc_spawn 6 WispMaster 30
+@wait 25
+hc_ai
+@log === A4 boss: beetle queen with guards (invulnerable heroes: measure damage and skill use)
+hc_kill_enemies
+hc_revive
+hc_revive
+hc_revive
+@wait 3
+hc_invulnerable true
+hc_ai reset
+hc_spawn 1 BeetleQueenMaster 30
+hc_spawn 2 BeetleGuardMaster 25
+@wait 35
+hc_ai
+hc_status
+@log === O1 obedience: move orders, no enemies
+hc_kill_enemies
+@wait 2
+hc_ai reset
+hc_order move 40 0
+@wait 12
+hc_order move -30 35
+@wait 12
+hc_order move 0 -50
+@wait 14
+hc_ai
+hc_status
+@log === O2 move through enemies: must not stop to fight
+hc_ai reset
+hc_spawn_at 8 LemurianMaster 25 0
+@wait 1
+hc_order move 55 0
+@wait 16
+hc_ai
+hc_status
+@log === O3 attack-move into a group 50 m away
+hc_kill_enemies
+@wait 2
+hc_ai reset
+hc_spawn_at 6 LemurianMaster 50 0
+@wait 1
+hc_order amove 70 0
+@wait 25
+hc_ai
+hc_status
+@log === O4 hold position with enemies coming
+hc_kill_enemies
+@wait 2
+hc_ai reset
+hc_order hold
+hc_spawn 8 LemurianMaster 28
+@wait 20
+hc_ai
+@log === O5 focus the biggest enemy among others
+hc_kill_enemies
+@wait 2
+hc_ai reset
+hc_spawn 6 LemurianMaster 25
+hc_spawn 1 GolemMaster 30
+@wait 1
+hc_order attackbig
+hc_ai trace on
+@wait 12
+hc_ai trace off
+hc_ai
+hc_status
+@log === O6 retreat out of a fight
+hc_ai reset
+hc_order retreat
+@wait 12
+hc_ai
+hc_status
+@log === END
+hc_invulnerable false
+disconnect
+@norun
+@wait 4
+@quit

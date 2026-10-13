@@ -1,0 +1,45 @@
+# AI trace of melee heroes (Loader, Merc, Croco) against melee and ranged monsters on Titanic Plains (diagnosis).
+@wait 4
+@log === M0 run start
+hc_cfg startingheroes 1
+hc_start
+@scene lobby
+@wait 3
+pregame_start_run
+@run
+@wait 22
+hc_next_stage golemplains
+@wait 20
+hc_cfg ignoreunlocks true
+hc_gold 200000
+hc_recruit Merc
+hc_recruit Loader
+hc_recruit Croco
+@wait 6
+hc_kill_enemies
+hc_cfg autobarrels false
+hc_cfg autochests false
+hc_invulnerable true
+hc_cfg verbose true
+@log === M1 beetles (melee monsters) 25 m away
+hc_ai reset
+hc_spawn 6 BeetleMaster 25
+hc_ai trace on
+@wait 15
+hc_ai trace off
+hc_ai
+@log === M2 lemurians (ranged monsters) 30 m away
+hc_kill_enemies
+@wait 2
+hc_ai reset
+hc_spawn 6 LemurianMaster 30
+hc_ai trace on
+@wait 15
+hc_ai trace off
+hc_ai
+@log === END
+hc_cfg verbose false
+disconnect
+@norun
+@wait 4
+@quit

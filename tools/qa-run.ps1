@@ -1,4 +1,4 @@
-# Runs one scripted in-game scenario and prints the interesting log lines.
+﻿# Runs one scripted in-game scenario and prints the interesting log lines.
 #   .\tools\qa-run.ps1 perf            builds + installs, runs tools\qa\perf.txt, prints the result
 #   .\tools\qa-run.ps1 perf -NoBuild   skip the build (the DLL is already installed)
 param(
@@ -56,10 +56,10 @@ $noise = "multiple NetworkIdentity|JobTempAlloc|AkGameObjManager|older than|scre
 $inStatus = $false
 for ($i = [Math]::Max(0, $start - 1); $i -lt $lines.Count; $i++) {
     $l = $lines[$i]
-    if ($l -match "AutoExec: ===|hc_perf:|HighCommand status:|HighCommand flow|HighCommand: |\[Error|HighCommand\]|Exception|NullRef") {
-        if ($l -notmatch $noise) { if ($l.Length -gt 300) { $l.Substring(0, 300) } else { $l } }
-        $inStatus = ($l -match "HighCommand status:")
+    if ($l -match "AutoExec: ===|hc_perf:|hc_ai |HighCommand status:|HighCommand flow|HighCommand: |\[Error|HighCommand\]|Exception|NullRef") {
+        if ($l -notmatch $noise) { if ($l.Length -gt 700) { $l.Substring(0, 700) } else { $l } }
+        $inStatus = ($l -match "HighCommand status:|hc_ai (report|trace)")
     } elseif ($inStatus -and $l -notmatch "^\[") {
-        if ($l.Trim().Length -gt 0) { if ($l.Length -gt 300) { $l.Substring(0, 300) } else { $l } }
+        if ($l.Trim().Length -gt 0) { if ($l.Length -gt 700) { $l.Substring(0, 700) } else { $l } }
     } else { $inStatus = $false }
 }

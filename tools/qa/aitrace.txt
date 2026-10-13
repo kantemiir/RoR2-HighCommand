@@ -1,0 +1,47 @@
+# AI trace: what each hero does second by second (diagnosis, not a pass/fail test). Verbose log on.
+@wait 4
+@log === T0 run start
+hc_cfg startingheroes 1
+hc_start
+@scene lobby
+@wait 3
+pregame_start_run
+@run
+@wait 22
+hc_cfg ignoreunlocks true
+hc_gold 200000
+hc_recruit Merc
+hc_recruit Huntress
+hc_recruit Loader
+hc_recruit Commando
+hc_recruit Croco
+@wait 6
+hc_kill_enemies
+hc_cfg autobarrels false
+hc_cfg autochests false
+hc_invulnerable true
+hc_cfg verbose true
+@log === T1 idle army, 8 lemurians 35 m around
+hc_ai reset
+hc_spawn 8 LemurianMaster 35
+hc_ai trace on
+@wait 20
+hc_ai trace off
+hc_ai
+@log === T2 hold position, lemurians coming
+hc_kill_enemies
+hc_order move 0 0
+@wait 4
+hc_ai reset
+hc_order hold
+hc_spawn 8 LemurianMaster 25
+hc_ai trace on
+@wait 16
+hc_ai trace off
+hc_ai
+@log === END
+hc_cfg verbose false
+disconnect
+@norun
+@wait 4
+@quit
