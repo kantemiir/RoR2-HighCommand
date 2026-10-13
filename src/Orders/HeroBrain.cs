@@ -1,9 +1,7 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using HighCommand.Army;
-using HighCommand.Mode;
 using RoR2;
 using RoR2.CharacterAI;
-using RoR2.Navigation;
 using UnityEngine;
 
 namespace HighCommand.Orders
@@ -11,30 +9,53 @@ namespace HighCommand.Orders
     public enum BrainMode : byte
     {
         Idle,   // stand where you are
-        Fight,  // fight the engaged enemy using the hero's own skill rules; movement scaled by MoveScale
-        Go,     // travel to Goal; no skills
+        Fight,  // fight Enemy from inside Tether
+        Go,     // travel to Goal; no fighting
         Cast    // aim at CastPoint / CastTarget and use CastSlot once
     }
 
     /// <summary>
-    /// The decision layer of one hero (server only): holds the order queue and the stance, looks around a few times
-    /// a second and publishes what the body should do (Mode, Goal, Enemy ...). The actual button pressing and
-    /// walking is done by <see cref="HeroAIState"/> every physics frame.
+    /// The decision layer of one hero (server only). It holds the order queue and the stance, looks around a few times a
+    /// second and publishes an intent for the body - what to do (Mode), where (Goal, Tether), against whom (Enemy) and
+    /// with which limits (StandStill, MobilitySkills). <see cref="HeroAIState"/> turns the intent into button presses
+    /// every physics frame.
+    ///
+    /// Priorities, highest first:
+    ///  1. an order that must not be interrupted: move, retreat, hold, use an object, cast;
+    ///  2. survival: a hurt hero under attack runs (only during orders that allow it, see <see cref="SurvivalInstinct"/>);
+    ///  3. the current order: attack, attack-move, patrol, follow, seek;
+    ///  4. no order: the stance - fight what comes near the post, help friends who fight, pick up loot nearby, go back.
     /// </summary>
     public sealed class HeroBrain : MonoBehaviour
     {
-        // ---- tunables ---------------------------------------------------------------------------
-        private const float ThinkInterval = 0.12f;
-        private const float AcquireAggressive = 55f;
-        private const float AcquireDefensive = 32f;
-        private const float AcquireAttackMove = 42f;
-        private const float AcquireHold = 36f;
-        private const float LeashAggressive = 95f;
-        private const float LeashDefensive = 42f;
+        // ---- distances and times of the orders (the tunable ones are in AiTuning / the hero profile) ----------
         private const float ArriveDistance = 3.2f;
-        private const float StuckSeconds = 2.8f;
+        private const float ArriveVerticalShare = 0.4f;  // the goal point is often a few meters above the node
+        private const float SprintBeyond = 10f;          // a walk longer than this is run
+        private const float IdleSprintBeyond = 22f;
+        private const float GoalMovedReplan = 2f;        // the body re-plans at once when the goal moves farther
+        private const float HoldSlack = 2f;              // pushed this far beyond the hold circle: walk back first
+        private const float MeleeHoldReach = 4.5f;       // a melee hero on hold attacks enemies this far beyond its circle
+        private const float FollowDistance = 7.5f;
+        private const float FollowSprintBeyond = 20f;
+        private const float FollowFightDistance = 22f;   // the leader is closer than this: free to fight
+        private const float FollowAcquire = 28f;
+        private const float FollowLeash = 26f;
+        private const float ZoneFightShare = 0.85f;      // a hero in a charging zone fights from this share of its radius
+        private const float BurstRadius = 20f;           // "burst" and "escape" skills count enemies this close
+        private const float LowHealthShare = 1.6f;       // "escape" skills: health below retreat line x this
+        private const float AttackingGrace = 1.2f;       // a skill used this recently: the hero is busy fighting
+        private const float ProgressMeters = 1.5f;       // getting this much closer to the target is progress
+        private const float UnreachableMemory = 8f;      // seconds a target given up is left alone
+        private const int FocusStrikesToGiveUp = 3;      // an attack order ends after the target was this often out of reach
+        private const float LostTargetSeconds = 3f;      // a cloaked focus target is waited for this long
+        private const float DefaultAttackRange = 30f;    // survivors whose drivers say "any distance"
+        private const float MinAttackRange = 4f, MaxAttackRange = 60f;
+        private const float RangeMargin = 2f;            // ranged heroes stand this much inside their reach
+        private const float MinFightRange = 6f;
+        private const float CastTimeout = 3f;            // a cast that did not happen by then is dropped
 
-        // ---- state ------------------------------------------------------------------------------
+        // ---- set from outside ----------------------------------------------------------------------------------
         public Hero Hero { get; internal set; }
 
         public Stance Stance = Stance.Aggressive;
@@ -52,11 +73,6 @@ namespace HighCommand.Orders
         public Vector3 ZoneCenter;
         public float ZoneRadius;
 
-        private Vector3 zoneSpot;
-        private Vector3 zoneSpotKey;
-        private float zoneSpotRadius;
-        private CharacterBody lastBody;
-
         public Order Current { get; private set; }
 
         public int QueuedCount => queue.Count;
@@ -64,20 +80,60 @@ namespace HighCommand.Orders
         /// <summary>The orders waiting after the current one (read-only; the overlay draws the route from it).</summary>
         public IReadOnlyList<Order> Queue => queue;
 
-        // ---- output (read by HeroAIState) --------------------------------------------------------
+        /// <summary>A hero could not use an object it was sent to (no gold, nothing left, unreachable). Host only.</summary>
+        public static event System.Action<Hero, GameObject, InteractFailure> InteractFailed;
+
+        // ---- intent (read by HeroAIState) ------------------------------------------------------------------------
         public BrainMode Mode { get; private set; } = BrainMode.Idle;
         public Vector3 Goal { get; private set; }
         public bool Sprint { get; private set; }
-        public float MoveScale { get; private set; } = 1f;
-        public bool AllowSkills { get; private set; } = true;
         public CharacterBody Enemy { get; private set; }
+
+        /// <summary>The circle the hero fights from (free = none).</summary>
+        public Tether Tether { get; private set; }
+
+        /// <summary>Fight without walking (passive stance): shoot what is in reach, never chase.</summary>
+        public bool StandStill { get; private set; }
+
+        /// <summary>Skills that carry the hero somewhere (dashes, leaps, blinks) may be used.</summary>
+        public bool MobilitySkills { get; private set; } = true;
+
         public int CastSlot { get; private set; } = -1;
         public Vector3 CastPoint { get; private set; }
         public CharacterBody CastTarget { get; private set; }
-        public string DebugState { get; private set; } = "";
-        public bool Stuck { get; private set; }
 
-        // ---- profile, fleeing and the context the skill rules look at -------------------------------------
+        /// <summary>Bumped whenever the body should react at once (another mode, target or goal).</summary>
+        public int IntentVersion { get; private set; }
+
+        public string DebugState { get; private set; } = "";
+
+        /// <summary>Set by the body: it tries to walk but gets nowhere.</summary>
+        public bool Stuck { get; internal set; }
+
+        /// <summary>True while the hero runs from a fight it is losing.</summary>
+        public bool Fleeing => survival.Fleeing;
+
+        /// <summary>Running from enemies: fleeing on its own or ordered to retreat (its "get away" skill may be used).</summary>
+        public bool Escaping => Fleeing || (Current != null && Current.Kind == OrderKind.Retreat);
+
+        // ---- context for the skill rules (read by the body) ------------------------------------------------------
+        /// <summary>Hostile bodies within <see cref="BurstRadius"/> m (refreshed every think).</summary>
+        public int EnemiesNear { get; private set; }
+        public bool LowHealth { get; private set; }
+        public float TargetDistance { get; private set; } = float.MaxValue;
+        public bool TargetIsBig { get; private set; }
+
+        /// <summary>How far the hero's own attacks reach (from its skill drivers).</summary>
+        public float AttackRange { get; private set; } = DefaultAttackRange;
+
+        /// <summary>How far its farthest skill that does not move it reaches (at least <see cref="AttackRange"/>).</summary>
+        public float SkillReach { get; private set; } = DefaultAttackRange;
+
+        /// <summary>A melee hero fights at arm's length; the others keep <see cref="FightRange"/>.</summary>
+        public bool Melee => Profile.standoff <= 0f;
+
+        /// <summary>The distance a ranged hero keeps from its target (0 for melee).</summary>
+        public float FightRange => Melee ? 0f : Mathf.Max(MinFightRange, Mathf.Min(Profile.standoff, AttackRange - RangeMargin));
 
         private HeroProfile profile;
 
@@ -92,32 +148,34 @@ namespace HighCommand.Orders
             }
         }
 
-        /// <summary>True while the hero runs from a fight it is losing.</summary>
-        public bool Fleeing { get; private set; }
-
-        private float fleeSince;
-        private float lastThreatTime;
-        private int enemiesNear;
-        private bool targetIsBig;
-        private float targetDistance = float.MaxValue;
-        private bool lowHealth;
-
-        private static readonly TeamIndex[] HostileTeams = { TeamIndex.Monster, TeamIndex.Lunar, TeamIndex.Void };
-
+        // ---- parts --------------------------------------------------------------------------------------------
         private readonly List<Order> queue = new List<Order>(4);
-        private BaseAI cachedAi;
-        private float thinkTimer;
-        private Vector3 progressPos;
-        private float progressTime;
-        private float castStarted;
+        private readonly TargetPicker picker = new TargetPicker();
+        private readonly SurvivalInstinct survival = new SurvivalInstinct();
+        private readonly EnemySeeker seeker = new EnemySeeker();
+        private LootErrands loot;
+
+        private BaseAI ai;
+        private CharacterBody lastBody;
         private bool initialised;
+        private bool rangeKnown;
+        private float thinkTimer;
+        private float castStarted;
+
+        private Vector3 zoneSpot, zoneSpotKey;
+        private float zoneSpotRadius;
+
+        // the target being chased: did the hero get closer or hit it lately?
+        private CharacterBody watchTarget;
+        private float watchBest, watchSince;
 
         private void Awake()
         {
-            thinkTimer = Random.Range(0f, ThinkInterval);
+            loot = new LootErrands(this);
+            thinkTimer = Random.Range(0f, AiTuning.ThinkInterval.Value); // heroes recruited together do not think in step
         }
 
-        // ---- commands -------------------------------------------------------------------------------
+        // ---- commands -------------------------------------------------------------------------------------------
 
         public void Issue(Order order, bool queued)
         {
@@ -126,10 +184,10 @@ namespace HighCommand.Orders
             if (!queued)
             {
                 queue.Clear();
-                Current = null; // dropped without ceremony; the new order starts next tick
+                Current = null; // dropped without ceremony; the new order starts at once
             }
             queue.Add(order);
-            if (Current == null) thinkTimer = 0f; // react immediately
+            if (Current == null) thinkTimer = 0f;
         }
 
         /// <summary>
@@ -146,7 +204,7 @@ namespace HighCommand.Orders
 
             if (!queued)
             {
-                queue.RemoveAll(o => o.Errand);
+                for (int i = queue.Count - 1; i >= 0; i--) if (queue[i].Errand) queue.RemoveAt(i);
                 if (Current != null && Current.Errand) Current = null;
             }
 
@@ -198,9 +256,6 @@ namespace HighCommand.Orders
             return end;
         }
 
-        /// <summary>A hero could not use an object it was sent to (no gold, nothing left, unreachable). Host only.</summary>
-        public static event System.Action<Hero, GameObject, InteractFailure> InteractFailed;
-
         public void ClearOrders(bool setAnchorHere)
         {
             queue.Clear();
@@ -212,21 +267,29 @@ namespace HighCommand.Orders
 
         public void SetStance(Stance s) => Stance = s;
 
+        /// <summary>Chests the purse can pay for now that no other hero is going to (the "seek chests" button).</summary>
+        internal int CountChestsToSeek() => loot.CountChests(Hero != null && Hero.Body ? Hero.Body.footPosition : Vector3.zero);
+
         internal void NotifyCastPressed()
         {
             if (Current != null && Current.Kind == OrderKind.Cast) Finish();
         }
 
-        // ---- loop -------------------------------------------------------------------------------------
+        // ---- loop ---------------------------------------------------------------------------------------------
 
         private void FixedUpdate()
         {
             thinkTimer -= Time.fixedDeltaTime;
             if (thinkTimer > 0f) return;
-            thinkTimer = ThinkInterval;
+            thinkTimer = AiTuning.ThinkInterval.Value;
             long started = Dev.Perf.Begin();
             try { Think(); }
-            catch (System.Exception e) { Plugin.Log.LogError($"HeroBrain.Think failed for {Hero}: {e}"); Mode = BrainMode.Idle; }
+            catch (System.Exception e)
+            {
+                Plugin.Log.LogError($"HeroBrain.Think failed for {Hero}: {e}");
+                Mode = BrainMode.Idle;
+                Enemy = null;
+            }
             Dev.Perf.End(ref Dev.Perf.Brain, started);
         }
 
@@ -242,17 +305,7 @@ namespace HighCommand.Orders
             }
 
             // A different body (a new stage, a revival): old orders and the old anchor belong to the old place.
-            if (self != lastBody)
-            {
-                lastBody = self;
-                initialised = false;
-                skipNearby.Clear();
-                seekSkip.Clear();
-                seekPrey = null;
-                queue.Clear();
-                Current = null;
-                Enemy = null;
-            }
+            if (self != lastBody) ResetForBody(self);
 
             Vector3 pos = self.footPosition;
             if (!initialised)
@@ -261,454 +314,264 @@ namespace HighCommand.Orders
                 if (self.currentVehicle) { Mode = BrainMode.Idle; DebugState = "in pod"; return; }
                 initialised = true;
                 Anchor = pos;
-                progressPos = pos;
-                progressTime = Time.time;
                 if (Settings.VerboseLog.Value) Plugin.Log.LogInfo($"{Hero}: anchor set at {pos}");
             }
 
-            if (!cachedAi && Hero.Master) cachedAi = Hero.Master.GetComponent<BaseAI>();
-            BaseAI ai = cachedAi;
+            if (!ai && Hero.Master) ai = Hero.Master.GetComponent<BaseAI>();
+            if (!rangeKnown && ai) LearnAttackRange();
 
-            // defaults for this tick
-            MoveScale = 1f;
-            AllowSkills = true;
-            Sprint = false;
-            CastSlot = -1;
-
-            if (Current == null && queue.Count > 0)
-            {
-                Current = queue[0];
-                queue.RemoveAt(0);
-                Current.startedAt = Time.time;
-                if (Current.Kind == OrderKind.Stop)
-                {
-                    Anchor = pos;
-                    Finish();
-                }
-                else if (Current.Kind == OrderKind.Hold)
-                {
-                    Anchor = pos;
-                }
-                if (Current != null) castStarted = Time.time;
-            }
-
+            if (Current == null && queue.Count > 0) StartNextOrder(pos);
             UpdateContext(self, pos);
 
-            Order o = Current;
-            if (UpdateFleeing(self, pos, o))
-            {
-                ThinkFlee(self, pos);
-            }
-            else if (o == null) ThinkIdle(self, ai, pos);
-            else ThinkOrder(o, self, ai, pos);
+            BrainMode oldMode = Mode;
+            CharacterBody oldEnemy = Enemy;
+            Vector3 oldGoal = Goal;
+            int oldSlot = CastSlot;
+            ResetIntent();
 
-            TrackProgress(pos);
-            PushEnemyToAi(ai);
+            Order o = Current;
+            if (survival.Update(Hero, self, Profile, FleeAllowed(o))) ThinkFlee(pos);
+            else if (o == null) ThinkIdle(self, pos);
+            else ThinkOrder(o, self, pos);
+
+            WatchEngagement(self);
+
+            TargetIsBig = EnemyTraits.IsBig(Enemy);
+            TargetDistance = Enemy ? (Enemy.corePosition - self.corePosition).magnitude : float.MaxValue;
+            if (Mode != oldMode || Enemy != oldEnemy || CastSlot != oldSlot
+                || (Mode == BrainMode.Go && (Goal - oldGoal).sqrMagnitude > GoalMovedReplan * GoalMovedReplan))
+                IntentVersion++;
+            PushEnemyToAi();
         }
 
-        // ---- context for the skill rules and for fleeing ----------------------------------------------
+        private void ResetForBody(CharacterBody self)
+        {
+            lastBody = self;
+            initialised = false;
+            queue.Clear();
+            Current = null;
+            Enemy = null;
+            watchTarget = null;
+            picker.Forget();
+            survival.Reset();
+            seeker.Reset();
+            loot.Reset();
+        }
+
+        private void StartNextOrder(Vector3 pos)
+        {
+            Current = queue[0];
+            queue.RemoveAt(0);
+            Current.startedAt = Time.time;
+            castStarted = Time.time;
+            if (Current.Kind == OrderKind.Stop)
+            {
+                Anchor = pos;
+                Finish();
+            }
+        }
+
+        private void ResetIntent()
+        {
+            Sprint = false;
+            StandStill = false;
+            MobilitySkills = true;
+            Tether = Tether.Free;
+            CastSlot = -1;
+        }
+
+        // From the survivor's own skill drivers: how far its primary attack reaches (where a ranged hero may stand), and
+        // how far any skill that does not move the hero reaches (what a hero on hold can still hit: a melee hero's spit,
+        // pylon or grenade).
+        private void LearnAttackRange()
+        {
+            rangeKnown = true;
+            float primary = 0f, any = 0f;
+            AISkillDriver[] drivers = ai.skillDrivers;
+            CharacterBody self = Hero.Body;
+            for (int i = 0; drivers != null && i < drivers.Length; i++)
+            {
+                AISkillDriver d = drivers[i];
+                if (!d || d.skillSlot == SkillSlot.None || d.buttonPressType == AISkillDriver.ButtonPressType.Abstain) continue;
+                if (float.IsInfinity(d.maxDistance)) continue;
+                int slot = (int)d.skillSlot;
+                if (d.skillSlot == SkillSlot.Primary) primary = Mathf.Max(primary, d.maxDistance);
+                if (!SkillGate.IsMobility(Profile, slot, self) && Profile.RuleFor(slot) != HeroProfile.RuleEscape) any = Mathf.Max(any, d.maxDistance);
+            }
+            AttackRange = primary > 0f ? Mathf.Clamp(primary, MinAttackRange, MaxAttackRange) : DefaultAttackRange;
+            SkillReach = Mathf.Clamp(Mathf.Max(any, AttackRange), MinAttackRange, MaxAttackRange);
+            if (Settings.VerboseLog.Value)
+                Plugin.Log.LogInfo($"{Hero}: attack range {AttackRange:0} m, skill reach {SkillReach:0} m, fight range {FightRange:0} m");
+        }
 
         private void UpdateContext(CharacterBody self, Vector3 pos)
         {
             HealthComponent hc = self.healthComponent;
-            float frac = hc && hc.fullCombinedHealth > 0f ? hc.combinedHealth / hc.fullCombinedHealth : 1f;
-            lowHealth = frac < Profile.retreatHealth * 1.6f;
-
-            enemiesNear = Perception.CountEnemies(pos, 20f, self.teamComponent.teamIndex);
-            if (enemiesNear > 0) lastThreatTime = Time.time;
-
-            targetIsBig = Enemy && (Enemy.isBoss || Enemy.isChampion);
-            targetDistance = Enemy ? (Enemy.corePosition - self.corePosition).magnitude : float.MaxValue;
+            LowHealth = hc.combinedHealthFraction < Profile.retreatHealth * LowHealthShare;
+            EnemiesNear = Perception.CountEnemies(pos, BurstRadius, self.teamComponent.teamIndex);
         }
 
-        /// <summary>The per-slot usage rule from the profile (0 primary .. 3 special, 4 equipment).</summary>
-        public bool RuleAllows(int slot)
+        // ---- intents ----------------------------------------------------------------------------------------------
+
+        private void Fight(CharacterBody enemy, Tether tether, bool standStill, bool mobility, string state)
         {
-            switch (Profile.RuleFor(slot))
-            {
-                case "never": return false;
-                case "escape": return lowHealth || Fleeing;
-                case "engage": return Enemy && targetDistance >= Profile.engageDistance;
-                case "burst": return enemiesNear >= Profile.burstEnemies || targetIsBig;
-                default: return true;
-            }
+            Enemy = enemy;
+            Mode = BrainMode.Fight;
+            Tether = tether;
+            StandStill = standStill;
+            MobilitySkills = mobility && !standStill;
+            DebugState = state;
         }
 
-        // Decides whether the hero should be running away right now.
-        private bool UpdateFleeing(CharacterBody self, Vector3 pos, Order order)
-        {
-            if (!Settings.AutoRetreat.Value)
-            {
-                Fleeing = false;
-                return false;
-            }
-
-            HealthComponent hc = self.healthComponent;
-            float frac = hc && hc.fullCombinedHealth > 0f ? hc.combinedHealth / hc.fullCombinedHealth : 1f;
-
-            bool fleeable = order == null || order.Kind == OrderKind.AttackMove || order.Kind == OrderKind.Attack
-                            || order.Kind == OrderKind.Patrol || order.Kind == OrderKind.Follow
-                            || order.Kind == OrderKind.SeekEnemies || order.Kind == OrderKind.SeekChests
-                            || (order.Kind == OrderKind.Interact && order.Errand); // a trip to a chest is not worth dying for
-
-            if (!Fleeing)
-            {
-                // the (costly) look around is made only for a hero that is hurt enough to care
-                if (fleeable && frac < Profile.retreatHealth
-                    && Perception.CountEnemies(pos, 38f, self.teamComponent.teamIndex) > 0)
-                {
-                    Fleeing = true;
-                    fleeSince = Time.time;
-                    fleeGoalAt = -100f; // a fresh place to run to
-                    if (Settings.VerboseLog.Value) Plugin.Log.LogInfo($"{Hero}: hurt ({frac:0.00}), fleeing");
-                }
-                return Fleeing;
-            }
-
-            // stop fleeing: recovered, nothing around any more, or the order changed to something explicit
-            bool threatened = Perception.CountEnemies(pos, 38f, self.teamComponent.teamIndex) > 0;
-            bool calm = Time.time - lastThreatTime > 3f && !threatened;
-            if (frac >= Profile.recoverHealth || calm || !fleeable || Time.time - fleeSince > 25f)
-            {
-                Fleeing = false;
-                Enemy = null;
-            }
-            return Fleeing;
-        }
-
-        private void ThinkFlee(CharacterBody self, Vector3 pos)
+        /// <param name="sprintBeyond">the hero runs when the goal is farther than this (0 = always, infinity = never)</param>
+        private void GoTo(Vector3 destination, Vector3 pos, float sprintBeyond, string state)
         {
             Enemy = null;
             Mode = BrainMode.Go;
-            Goal = SafePoint(self, pos);
-            Sprint = true;
-            AllowSkills = false;
-            DebugState = "fleeing";
+            Goal = destination;
+            Sprint = (destination - pos).sqrMagnitude > sprintBeyond * sprintBeyond;
+            DebugState = state;
         }
 
-        /// <summary>Hostile bodies within 20 m (refreshed every think); the executor uses it to time an escape skill.</summary>
-        public int EnemiesNear => enemiesNear;
-
-        private Vector3 fleeGoal;
-        private float fleeGoalAt = -100f;
-        private static readonly List<NodeGraph.NodeIndex> NodeBuffer = new List<NodeGraph.NodeIndex>(256);
-
-        // The place to run to is chosen again only every 1.5 s or when reached: a goal that changes every tick makes
-        // the hero zig-zag on the spot.
-        private Vector3 SafePoint(CharacterBody self, Vector3 pos)
+        private void Stand(string state)
         {
-            Vector3 left = fleeGoal - pos;
-            left.y = 0f;
-            if (Time.time - fleeGoalAt < 1.5f && left.sqrMagnitude > 4f * 4f) return fleeGoal;
-            fleeGoalAt = Time.time;
-            fleeGoal = ChooseSafePoint(pos);
-            if (Settings.VerboseLog.Value) Plugin.Log.LogInfo($"{Hero}: flee goal {fleeGoal:0} (from {pos:0})");
-            return fleeGoal;
-        }
-
-        // To the nearest healthy friend; alone: a ground node on about the same level, away from the enemies. A point
-        // far below (the foot of a cliff) is never chosen: a hero walking there falls and lands at 1 HP among enemies.
-        private Vector3 ChooseSafePoint(Vector3 pos)
-        {
-            HighCommandRun run = HighCommandRun.Instance;
-            Hero friend = null;
-            float friendDist = 120f * 120f;
-            if (run != null)
-            {
-                foreach (Hero h in run.Army.Heroes)
-                {
-                    if (h == Hero || !h.IsAlive) continue;
-                    CharacterBody b = h.Body;
-                    HealthComponent hc = b ? b.healthComponent : null;
-                    if (!hc || hc.fullCombinedHealth <= 0f || hc.combinedHealth / hc.fullCombinedHealth < 0.4f) continue;
-                    float d = (b.footPosition - pos).sqrMagnitude;
-                    if (d < friendDist) { friendDist = d; friend = h; }
-                }
-            }
-            if (friend != null) return friend.Body.footPosition;
-
-            Vector3 enemies = Vector3.zero;
-            int e = 0;
-            foreach (TeamIndex team in HostileTeams)
-            {
-                var members = TeamComponent.GetTeamMembers(team);
-                for (int i = 0; i < members.Count; i++)
-                {
-                    TeamComponent tc = members[i];
-                    if (!tc || !tc.body || (tc.body.corePosition - pos).sqrMagnitude > 40f * 40f) continue;
-                    enemies += tc.body.corePosition;
-                    e++;
-                }
-            }
-            Vector3 rally = run != null ? run.RallyPoint : pos;
-            if (e == 0) return rally;
-            Vector3 threat = enemies / e;
-
-            SceneInfo info = SceneInfo.instance;
-            NodeGraph graph = info ? info.groundNodes : null;
-            if (graph)
-            {
-                NodeBuffer.Clear();
-                graph.FindNodesInRange(pos, 10f, 34f, HullMask.Human, NodeBuffer);
-                int step = Mathf.Max(1, NodeBuffer.Count / 120); // a big open map has hundreds: a sample is enough
-                bool found = false;
-                float bestScore = float.MinValue;
-                Vector3 best = pos;
-                for (int i = 0; i < NodeBuffer.Count; i += step)
-                {
-                    if (!graph.GetNodePosition(NodeBuffer[i], out Vector3 np)) continue;
-                    float dy = np.y - pos.y;
-                    if (dy < -5f || dy > 8f) continue; // stay on this level: no cliffs down, no walls up
-                    Vector3 fromThreat = np - threat;
-                    fromThreat.y = 0f;
-                    Vector3 toRally = rally - np;
-                    toRally.y = 0f;
-                    float score = fromThreat.magnitude - 1.5f * Mathf.Abs(dy) - 0.15f * toRally.magnitude;
-                    if (score > bestScore) { bestScore = score; best = np; found = true; }
-                }
-                NodeBuffer.Clear();
-                if (found) return best;
-            }
-
-            // no node graph (or nothing on this level): straight away, but only if the ground there is not far below
-            Vector3 away = pos - threat;
-            away.y = 0f;
-            if (away.sqrMagnitude < 0.01f) away = Vector3.back;
-            Vector3 p = Formation.SnapToGround(pos + away.normalized * 20f);
-            return p.y - pos.y < -5f ? pos : p;
-        }
-
-        // ---- idle / stance ---------------------------------------------------------------------------
-
-        private void ThinkIdle(CharacterBody self, BaseAI ai, Vector3 pos)
-        {
-            float acquire = Stance == Stance.Aggressive ? Profile.acquireAggressive : Profile.acquireDefensive;
-            float leash = Stance == Stance.Aggressive ? Profile.leashAggressive : Profile.leashDefensive;
-
-            if (ZoneRadius > 0f)
-            {
-                // a charging zone: hold a personal spot inside it and do not chase beyond its edge
-                Anchor = ZoneSpot();
-                leash = Mathf.Min(leash, ZoneRadius * 0.85f + 6f);
-            }
-
-            CharacterBody enemy = null;
-            if (Stance != Stance.Passive)
-            {
-                enemy = Perception.FindBestEnemy(self, pos, acquire, requireLineOfSight: true, current: Enemy,
-                    leashFromPoint: leash, leashPoint: Anchor);
-            }
-            else if (!self.outOfDanger && ai != null && ai.currentEnemy != null && ai.currentEnemy.gameObject)
-            {
-                // passive: only answer whoever is hitting us
-                CharacterBody attacker = ai.currentEnemy.characterBody;
-                if (attacker && Perception.IsTargetable(attacker, self.teamComponent.teamIndex)) enemy = attacker;
-            }
-
-            if (enemy)
-            {
-                Enemy = enemy;
-                Mode = BrainMode.Fight;
-                DebugState = "idle: fighting";
-                return;
-            }
-
             Enemy = null;
-            if (TryFetchBarrel(self, pos)) return;
-            if (TryFetchChest(self, pos)) return;
+            Mode = BrainMode.Idle;
+            DebugState = state;
+        }
 
-            float away = (pos - Anchor).magnitude;
-            if (away > ArriveDistance + 1f)
+        private TargetPicker.Query Search(Vector3 center, float radius, Tether tether, float assist = 0f, bool onlyAttackers = false) =>
+            new TargetPicker.Query
             {
-                Mode = BrainMode.Go;
-                Goal = Anchor;
-                Sprint = away > 22f;
-                AllowSkills = false;
-                DebugState = "idle: returning to anchor";
+                Center = center,
+                Radius = radius,
+                AssistRadius = assist,
+                Tether = tether,
+                RequireSight = true,
+                OnlyAttackers = onlyAttackers
+            };
+
+        private CharacterBody Pick(CharacterBody self, in TargetPicker.Query q) => picker.Pick(self, Melee, SkillReach, q, Enemy);
+
+        // ---- survival -------------------------------------------------------------------------------------------
+
+        // An explicit move, retreat, hold, use or cast is never cut short by the instinct to run.
+        private static bool FleeAllowed(Order o)
+        {
+            if (o == null) return true;
+            switch (o.Kind)
+            {
+                case OrderKind.AttackMove:
+                case OrderKind.Attack:
+                case OrderKind.Patrol:
+                case OrderKind.Follow:
+                case OrderKind.SeekEnemies:
+                case OrderKind.SeekChests:
+                    return true;
+                case OrderKind.Interact:
+                    return o.Errand; // a trip to a chest is not worth dying for
+                default:
+                    return false;
+            }
+        }
+
+        private void ThinkFlee(Vector3 pos)
+        {
+            GoTo(survival.Goal(Hero, pos), pos, sprintBeyond: 0f, "fleeing");
+        }
+
+        // ---- no order: the stance ---------------------------------------------------------------------------
+
+        private void ThinkIdle(CharacterBody self, Vector3 pos)
+        {
+            bool zone = ZoneRadius > 0f;
+            if (zone) Anchor = ZoneSpot();
+
+            float acquire = Stance == Stance.Aggressive ? Profile.acquireAggressive : Profile.acquireDefensive;
+            Tether tether = zone
+                ? new Tether(ZoneCenter, ZoneRadius * ZoneFightShare)
+                : new Tether(Anchor, Stance == Stance.Aggressive ? Profile.leashAggressive : Profile.leashDefensive);
+
+            if (Stance == Stance.Passive)
+            {
+                // only answer whoever is hitting this hero, from where it stands
+                TargetPicker.Query q = Search(pos, acquire, Tether.Free, onlyAttackers: true);
+                q.StrictSight = true;
+                CharacterBody attacker = Pick(self, q);
+                if (attacker) { Fight(attacker, new Tether(pos, 0.01f), standStill: true, mobility: false, "idle: answering fire"); return; }
             }
             else
             {
-                Mode = BrainMode.Idle;
-                DebugState = "idle";
+                CharacterBody enemy = Pick(self, Search(pos, acquire, tether, AiTuning.AssistRange.Value));
+                if (enemy) { Fight(enemy, tether, standStill: false, mobility: true, "idle: fighting"); return; }
             }
-        }
 
-        private float barrelScanAt;
-        private readonly HashSet<GameObject> skipNearby = new HashSet<GameObject>();
-
-        // A hero with nothing to do opens a barrel near its post (free gold; anything with a price waits for an order).
-        // Only in calm: no enemy near, not hit lately, no zone to hold.
-        private bool TryFetchBarrel(CharacterBody self, Vector3 pos)
-        {
-            if (!Settings.AutoOpenBarrels.Value || ZoneRadius > 0f || enemiesNear > 0 || !self.outOfDanger) return false;
-            if (Time.time < barrelScanAt) return false;
-            barrelScanAt = Time.time + 1f;
-
-            const float FromPost = 22f, FromHero = 28f;
-            BarrelInteraction best = null;
-            float bestDist = float.MaxValue;
-            var barrels = InstanceTracker.GetInstancesList<BarrelInteraction>();
-            for (int i = 0; i < barrels.Count; i++)
+            bool calm = !zone && EnemiesNear == 0 && self.outOfDanger;
+            if (loot.TryNearbyTrip(pos, calm))
             {
-                BarrelInteraction b = barrels[i];
-                if (!b || b.Networkopened || skipNearby.Contains(b.gameObject)) continue;
-                Vector3 bp = b.transform.position;
-                if ((bp - Anchor).sqrMagnitude > FromPost * FromPost || Mathf.Abs(bp.y - pos.y) > 6f) continue;
-                float d = (bp - pos).sqrMagnitude;
-                if (d > FromHero * FromHero || d >= bestDist || ClaimedByAnother(b.gameObject)) continue;
-                bestDist = d;
-                best = b;
+                Stand("idle: going for loot");
+                thinkTimer = 0f; // the trip starts at the next think
+                return;
             }
-            if (!best) return false;
-
-            Errand(new Order { Kind = OrderKind.Interact, Target = best.gameObject, Point = best.transform.position, auto = true }, queued: false);
-            if (Settings.VerboseLog.Value) Plugin.Log.LogInfo($"{Hero}: opening a barrel at {best.transform.position:0}");
-            return false; // the trip starts at the next think
+            ReturnToAnchor(pos);
         }
 
-        private float chestScanAt;
-
-        // A hero with nothing to do opens a chest near its post when the purse can pay for it - chests only (not
-        // shops, shrines, printers, drones: those are the player's choice). Same calm as for barrels; the gold other
-        // heroes are already walking to spend is kept for them.
-        private bool TryFetchChest(CharacterBody self, Vector3 pos)
+        private void ReturnToAnchor(Vector3 pos)
         {
-            if (!Settings.AutoOpenChests.Value || ZoneRadius > 0f || enemiesNear > 0 || !self.outOfDanger) return false;
-            if (Time.time < chestScanAt) return false;
-            chestScanAt = Time.time + 1f;
-
-            const float FromPost = 30f, FromHero = 35f;
-            long spare = (long)Economy.Gold - GoldClaimedByOthers();
-            PurchaseInteraction best = null;
-            float bestDist = float.MaxValue;
-            var all = InstanceTracker.GetInstancesList<PurchaseInteraction>();
-            for (int i = 0; i < all.Count; i++)
-            {
-                PurchaseInteraction p = all[i];
-                if (!p || !p.available || p.costType != CostTypeIndex.Money || p.cost > spare) continue;
-                GameObject go = p.gameObject;
-                if (skipNearby.Contains(go) || Interactables.KindOf(go) != InteractKind.Chest) continue;
-                Vector3 cp = p.transform.position;
-                if ((cp - Anchor).sqrMagnitude > FromPost * FromPost || Mathf.Abs(cp.y - pos.y) > 6f) continue;
-                float d = (cp - pos).sqrMagnitude;
-                if (d > FromHero * FromHero || d >= bestDist || ClaimedByAnother(go)) continue;
-                bestDist = d;
-                best = p;
-            }
-            if (!best) return false;
-
-            Errand(new Order { Kind = OrderKind.Interact, Target = best.gameObject, Point = best.transform.position, auto = true }, queued: false);
-            if (Settings.VerboseLog.Value) Plugin.Log.LogInfo($"{Hero}: opening a chest (${best.cost}) at {best.transform.position:0}");
-            return false; // the trip starts at the next think
-        }
-
-        /// <summary>The gold of the chests and shops other heroes are on their way to (it will be spent there).</summary>
-        private long GoldClaimedByOthers()
-        {
-            HighCommandRun run = HighCommandRun.Instance;
-            if (run == null) return 0;
-            long sum = 0;
-            foreach (Hero h in run.Army.Heroes)
-            {
-                HeroBrain other = h.Brain;
-                if (!other || other == this) continue;
-                if (other.Current != null) sum += GoldOf(other.Current);
-                for (int i = 0; i < other.queue.Count; i++) sum += GoldOf(other.queue[i]);
-            }
-            return sum;
-        }
-
-        private static long GoldOf(Order o)
-        {
-            if (o.Kind != OrderKind.Interact || !o.Target) return 0;
-            return Interactables.TryGetPrice(o.Target, out CostTypeIndex type, out int cost) && type == CostTypeIndex.Money ? cost : 0;
-        }
-
-        private bool ClaimedByAnother(GameObject target)
-        {
-            HighCommandRun run = HighCommandRun.Instance;
-            if (run == null) return false;
-            foreach (Hero h in run.Army.Heroes)
-            {
-                HeroBrain other = h.Brain;
-                if (!other || other == this) continue;
-                if (other.Current != null && other.Current.Target == target) return true;
-                for (int i = 0; i < other.queue.Count; i++) if (other.queue[i].Target == target) return true;
-            }
-            return false;
+            float away = (pos - Anchor).magnitude;
+            if (away > ArriveDistance + 1f) GoTo(Anchor, pos, IdleSprintBeyond, "idle: returning to post");
+            else Stand("idle");
         }
 
         // A stable place for this hero inside the zone (heroes must not all stack on the centre).
         private Vector3 ZoneSpot()
         {
+            const float GoldenAngle = 2.399963f; // neighbours spread evenly
+            const float InnerShare = 0.22f, RingShare = 0.34f;
             if ((ZoneCenter - zoneSpotKey).sqrMagnitude > 1f || Mathf.Abs(ZoneRadius - zoneSpotRadius) > 1.5f)
             {
                 zoneSpotKey = ZoneCenter;
                 zoneSpotRadius = ZoneRadius;
                 int id = Hero != null ? Hero.Id : 0;
-                float angle = id * 2.399963f; // golden angle: neighbours spread evenly
-                float radius = ZoneRadius * (0.22f + 0.34f * (((id * 7) % 5) / 4f));
+                float angle = id * GoldenAngle;
+                float radius = ZoneRadius * (InnerShare + RingShare * (((id * 7) % 5) / 4f));
                 Vector3 p = ZoneCenter + new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * radius;
                 zoneSpot = Formation.SnapToGround(p);
             }
             return zoneSpot;
         }
 
-        // ---- orders ------------------------------------------------------------------------------------
+        // ---- orders ---------------------------------------------------------------------------------------------
 
-        private void ThinkOrder(Order o, CharacterBody self, BaseAI ai, Vector3 pos)
+        private void ThinkOrder(Order o, CharacterBody self, Vector3 pos)
         {
             switch (o.Kind)
             {
                 case OrderKind.Move:
-                    GoTo(o.Point, pos, sprintFar: true, skills: false);
+                    GoTo(o.Point, pos, SprintBeyond, "move");
                     if (Arrived(pos, o.Point)) { Anchor = o.Point; Finish(); }
-                    DebugState = "move";
                     break;
 
                 case OrderKind.Retreat:
-                    GoTo(o.Point, pos, sprintFar: true, skills: false);
-                    Sprint = true;
+                    GoTo(o.Point, pos, sprintBeyond: 0f, "retreat");
                     if (Arrived(pos, o.Point)) { Anchor = o.Point; Finish(); }
-                    DebugState = "retreat";
                     break;
 
                 case OrderKind.AttackMove:
-                    ThinkAttackMove(o, o.Point, self, pos);
+                    ThinkAttackMove(o, o.Point, self, pos, patrol: false);
                     break;
 
                 case OrderKind.Patrol:
-                {
-                    Vector3 end = o.patrolToSecond ? o.Point2 : o.Point;
-                    ThinkAttackMove(o, end, self, pos, patrol: true);
+                    ThinkAttackMove(o, o.patrolToSecond ? o.Point2 : o.Point, self, pos, patrol: true);
                     break;
-                }
 
                 case OrderKind.Attack:
-                {
-                    CharacterBody target = o.Target ? o.Target.GetComponent<CharacterBody>() : null;
-                    if (!target || !Perception.IsTargetable(target, self.teamComponent.teamIndex))
-                    {
-                        // the target is gone (or cloaked): the order is done
-                        Finish();
-                        DebugState = "attack done";
-                        break;
-                    }
-                    Enemy = target;
-                    Mode = BrainMode.Fight;
-                    DebugState = "attack";
+                    ThinkAttack(o, self, pos);
                     break;
-                }
 
                 case OrderKind.Hold:
-                {
-                    MoveScale = 0f;
-                    CharacterBody enemy = Perception.FindBestEnemy(self, pos, AcquireHold, requireLineOfSight: true, current: Enemy);
-                    Enemy = enemy;
-                    Mode = enemy ? BrainMode.Fight : BrainMode.Idle;
-                    DebugState = "hold";
+                    ThinkHold(o, self, pos);
                     break;
-                }
 
                 case OrderKind.Follow:
                     ThinkFollow(o, self, pos);
@@ -719,13 +582,13 @@ namespace HighCommand.Orders
                     break;
 
                 case OrderKind.Cast:
+                    Enemy = null;
                     Mode = BrainMode.Cast;
                     CastSlot = o.Slot;
                     CastPoint = o.Point;
                     CastTarget = o.Target ? o.Target.GetComponent<CharacterBody>() : null;
-                    MoveScale = 0f;
                     DebugState = "cast";
-                    if (Time.time - castStarted > 3f) Finish(); // could not be cast: do not block the queue
+                    if (Time.time - castStarted > CastTimeout) Finish(); // could not be cast: do not block the queue
                     break;
 
                 case OrderKind.SeekEnemies:
@@ -742,27 +605,73 @@ namespace HighCommand.Orders
             }
         }
 
-        private void ThinkAttackMove(Order o, Vector3 destination, CharacterBody self, Vector3 pos, bool patrol = false)
+        // Marching to a point and fighting what is met on the way: a fight is kept within the leash around the place
+        // where it started, then the march goes on.
+        private void ThinkAttackMove(Order o, Vector3 destination, CharacterBody self, Vector3 pos, bool patrol)
         {
-            // an explicit attack-move overrides a passive stance
-            CharacterBody enemy = Perception.FindBestEnemy(self, pos, AcquireAttackMove, requireLineOfSight: false, current: Enemy);
-
+            Tether leash = new Tether(o.engaged ? o.engagedAt : pos, AiTuning.AttackMoveLeash.Value);
+            CharacterBody enemy = Pick(self, Search(pos, AiTuning.AttackMoveRange.Value, leash));
             if (enemy)
             {
-                Enemy = enemy;
-                Mode = BrainMode.Fight;
-                DebugState = patrol ? "patrol: fighting" : "attack-move: fighting";
+                if (!o.engaged) { o.engaged = true; o.engagedAt = pos; }
+                Fight(enemy, leash, standStill: false, mobility: true, patrol ? "patrol: fighting" : "attack-move: fighting");
                 return;
             }
 
-            Enemy = null;
-            GoTo(destination, pos, sprintFar: false, skills: true);
-            DebugState = patrol ? "patrol" : "attack-move";
-            if (Arrived(pos, destination))
+            o.engaged = false;
+            GoTo(destination, pos, SprintBeyond, patrol ? "patrol" : "attack-move");
+            if (!Arrived(pos, destination)) return;
+            if (patrol) o.patrolToSecond = !o.patrolToSecond;
+            else { Anchor = destination; Finish(); }
+        }
+
+        // Focus fire: this enemy and no other. The order ends with its death; a target that hides (cloak) is waited for
+        // a moment, one that keeps being out of reach is given up so the hero does not run in circles for ever.
+        private void ThinkAttack(Order o, CharacterBody self, Vector3 pos)
+        {
+            CharacterBody target = o.Target ? o.Target.GetComponent<CharacterBody>() : null;
+            bool dead = !target || !target.healthComponent || !target.healthComponent.alive;
+            if (dead || o.unreachableStrikes >= FocusStrikesToGiveUp)
             {
-                if (patrol) o.patrolToSecond = !o.patrolToSecond;
-                else { Anchor = destination; Finish(); }
+                if (!dead && Settings.VerboseLog.Value) Plugin.Log.LogInfo($"{Hero}: gave up the attack on {target.name} (out of reach)");
+                Anchor = pos; // a hero that killed its target stays there instead of running back
+                Finish();
+                Stand(dead ? "attack: done" : "attack: out of reach");
+                return;
             }
+
+            if (!Perception.IsTargetable(target, self.teamComponent.teamIndex))
+            {
+                if (o.lostAt < 0f) o.lostAt = Time.time;
+                if (Time.time - o.lostAt > LostTargetSeconds) { Anchor = pos; Finish(); Stand("attack: target lost"); }
+                else Stand("attack: waiting for the target");
+                return;
+            }
+            o.lostAt = -1f;
+            Fight(target, Tether.Free, standStill: false, mobility: true, "attack");
+        }
+
+        // Hold position: fight from the spot. A melee hero may step a little (HoldRadius) to reach an enemy; skills that
+        // carry the hero away are not used; a hero pushed off the spot walks back.
+        private void ThinkHold(Order o, CharacterBody self, Vector3 pos)
+        {
+            float radius = AiTuning.HoldRadius.Value;
+            var circle = new Tether(o.Point, Mathf.Max(radius, 0.5f));
+            if (circle.Distance(pos) > radius + HoldSlack)
+            {
+                GoTo(o.Point, pos, SprintBeyond, "hold: back to the spot");
+                return;
+            }
+
+            // what the hero can hit from its circle: its weapon, or a ranged skill of a melee hero (spit, pylon, grenade)
+            float reach = radius + Mathf.Max(SkillReach, Melee ? MeleeHoldReach : AttackRange);
+            TargetPicker.Query q = Search(o.Point, reach, circle);
+            q.StrictSight = true; // it cannot walk round to a target out of sight
+            CharacterBody enemy = Pick(self, q);
+            if (enemy) { Fight(enemy, circle, standStill: false, mobility: false, "hold: fighting"); return; }
+
+            if (circle.Distance(pos) > ArriveDistance) GoTo(o.Point, pos, float.PositiveInfinity, "hold: back to the spot");
+            else Stand("hold");
         }
 
         private void ThinkFollow(Order o, CharacterBody self, Vector3 pos)
@@ -771,46 +680,30 @@ namespace HighCommand.Orders
             if (!leader || !leader.healthComponent || !leader.healthComponent.alive)
             {
                 Finish();
+                Stand("follow: leader gone");
                 return;
             }
             Vector3 lp = leader.footPosition;
             float dist = (lp - pos).magnitude;
 
-            CharacterBody enemy = Perception.FindBestEnemy(self, lp, 28f, requireLineOfSight: true, current: Enemy,
-                leashFromPoint: 26f, leashPoint: lp);
-            if (enemy && dist < 22f)
-            {
-                Enemy = enemy;
-                Mode = BrainMode.Fight;
-                DebugState = "follow: fighting";
-                return;
-            }
+            var leash = new Tether(lp, FollowLeash);
+            CharacterBody enemy = dist < FollowFightDistance ? Pick(self, Search(lp, FollowAcquire, leash)) : null;
+            if (enemy) { Fight(enemy, leash, standStill: false, mobility: true, "follow: fighting"); return; }
 
-            Enemy = null;
-            if (dist > 7.5f)
-            {
-                Mode = BrainMode.Go;
-                Goal = lp;
-                Sprint = dist > 20f;
-                AllowSkills = false;
-                DebugState = "follow";
-            }
-            else
-            {
-                Mode = BrainMode.Idle;
-                DebugState = "follow: close";
-            }
+            if (dist > FollowDistance) GoTo(lp, pos, FollowSprintBeyond, "follow");
+            else Stand("follow: close");
         }
 
         private void ThinkInteract(Order o, CharacterBody self, Vector3 pos)
         {
+            const float ReachHorizontal = 3f, ReachVertical = 4.5f, StuckGiveUp = 8f;
             GameObject target = o.Target;
             bool teleporter = target && target.GetComponent<TeleporterInteraction>();
             if (!target || (!teleporter && Interactables.IsUsed(target)))
             {
                 // gone, or somebody else got it first: nothing to say, the hero goes back to what it was doing
-                DebugState = "interact: nothing left";
                 Finish();
+                Stand("interact: nothing left");
                 return;
             }
 
@@ -823,23 +716,22 @@ namespace HighCommand.Orders
             Vector3 to = o.reach - pos;
             float dy = to.y;
             to.y = 0f;
-            bool there = to.magnitude <= 3f && Mathf.Abs(dy) < 4.5f;
+            bool there = to.magnitude <= ReachHorizontal && Mathf.Abs(dy) < ReachVertical;
 
             if (!there)
             {
-                bool gaveUp = Time.time - o.startedAt > o.walkBudget || (Stuck && Time.time - progressTime > 8f);
+                bool gaveUp = Time.time - o.startedAt > o.walkBudget || (Stuck && Time.time - o.startedAt > StuckGiveUp);
                 if (!gaveUp)
                 {
-                    GoTo(o.reach, pos, sprintFar: true, skills: false);
-                    DebugState = "interact: walking";
+                    GoTo(o.reach, pos, SprintBeyond, "interact: walking");
                     return;
                 }
                 if (!teleporter)
                 {
-                    DebugState = "interact: unreachable";
                     if (!o.auto) InteractFailed?.Invoke(Hero, target, InteractFailure.Unreachable);
-                    else skipNearby.Add(target); // not tried again from here
+                    else loot.Skip(target); // not tried again from here
                     Finish();
+                    Stand("interact: unreachable");
                     return;
                 }
                 // the teleporter is used from wherever the hero got to: a hero stuck on the way must not hold up the stage
@@ -847,221 +739,109 @@ namespace HighCommand.Orders
 
             var interactor = self.GetComponent<Interactor>();
             var interactable = target.GetComponent<IInteractable>();
+            string state = "interact: used";
             if (interactor && interactable != null)
             {
                 Interactability can = interactable.GetInteractability(interactor);
-                if (can == Interactability.Available)
-                {
-                    interactor.AttemptInteraction(target);
-                    DebugState = "interact: used";
-                }
+                if (can == Interactability.Available) interactor.AttemptInteraction(target);
                 else if (can == Interactability.ConditionsNotMet)
                 {
                     bool gold = Interactables.TryGetPrice(target, out CostTypeIndex type, out int _) && type == CostTypeIndex.Money;
                     // a trip of the hero's own (a chest it went for) ends quietly: the purse was spent meanwhile
                     if (!o.auto) InteractFailed?.Invoke(Hero, target, gold ? InteractFailure.NoGold : InteractFailure.CannotPay);
-                    DebugState = "interact: cannot pay";
+                    state = "interact: cannot pay";
                 }
             }
             Finish();
+            Stand(state);
         }
-
-        // ---- seek orders: enemies or chests anywhere on the map -----------------------------------------
-
-        private CharacterBody seekPrey;
-        private float seekScanAt, seekBest, seekProgressAt;
-        private readonly Dictionary<CharacterBody, float> seekSkip = new Dictionary<CharacterBody, float>();
 
         // Goes after the nearest enemy of the whole map, fights whatever it meets on the way, then takes the next one.
         // With nothing left the hero waits where it is (the order stays: new monsters are hunted as they come).
         private void ThinkSeekEnemies(CharacterBody self, Vector3 pos)
         {
-            CharacterBody enemy = Perception.FindBestEnemy(self, pos, AcquireAttackMove, requireLineOfSight: false, current: Enemy);
             Anchor = pos;
-            if (enemy)
-            {
-                Enemy = enemy;
-                Mode = BrainMode.Fight;
-                DebugState = "seek enemies: fighting";
-                return;
-            }
-            Enemy = null;
+            CharacterBody enemy = Pick(self, Search(pos, AiTuning.AttackMoveRange.Value, Tether.Free));
+            if (enemy) { Fight(enemy, Tether.Free, standStill: false, mobility: true, "seek enemies: fighting"); return; }
 
-            bool alive = seekPrey && seekPrey.healthComponent && seekPrey.healthComponent.alive
-                         && Perception.IsTargetable(seekPrey, self.teamComponent.teamIndex);
-            if (!alive || Time.time >= seekScanAt)
-            {
-                seekScanAt = Time.time + 1.5f;
-                CharacterBody next = NearestEnemyOnMap(self, pos);
-                if (next != seekPrey)
-                {
-                    seekPrey = next;
-                    seekBest = float.MaxValue;
-                    seekProgressAt = Time.time;
-                }
-            }
-            if (!seekPrey)
-            {
-                Mode = BrainMode.Idle;
-                DebugState = "seek enemies: none on the map";
-                return;
-            }
-
-            // walking for long without getting closer: it cannot be reached (a flier over a pit, a ledge) - the next one
-            float distance = (seekPrey.footPosition - pos).magnitude;
-            if (distance < seekBest - 2f)
-            {
-                seekBest = distance;
-                seekProgressAt = Time.time;
-            }
-            else if (Time.time - seekProgressAt > 10f)
-            {
-                seekSkip[seekPrey] = Time.time + 30f;
-                seekPrey = null;
-                seekScanAt = 0f;
-                Mode = BrainMode.Idle;
-                DebugState = "seek enemies: out of reach, next";
-                return;
-            }
-
-            GoTo(seekPrey.footPosition, pos, sprintFar: true, skills: true);
-            DebugState = $"seek enemies: going ({distance:0} m)";
+            CharacterBody prey = seeker.Update(self, pos, out bool gaveUp);
+            if (gaveUp) { Stand("seek enemies: out of reach, next"); return; }
+            if (!prey) { Stand("seek enemies: none on the map"); return; }
+            GoTo(prey.footPosition, pos, SprintBeyond, "seek enemies: going");
         }
 
-        private CharacterBody NearestEnemyOnMap(CharacterBody self, Vector3 pos)
-        {
-            CharacterBody best = null;
-            float bestSqr = float.MaxValue;
-            float now = Time.time;
-            for (int t = 0; t < HostileTeams.Length; t++)
-            {
-                var members = TeamComponent.GetTeamMembers(HostileTeams[t]);
-                for (int i = 0; i < members.Count; i++)
-                {
-                    CharacterBody b = members[i] ? members[i].body : null;
-                    if (!b || !b.healthComponent || !b.healthComponent.alive) continue;
-                    if (seekSkip.TryGetValue(b, out float until) && until > now) continue;
-                    if (!Perception.IsTargetable(b, self.teamComponent.teamIndex)) continue;
-                    Vector3 d = b.footPosition - pos;
-                    d.y *= 2f; // a monster on a ledge far above is a long way round
-                    float sqr = d.sqrMagnitude;
-                    if (sqr < bestSqr) { bestSqr = sqr; best = b; }
-                }
-            }
-            return best;
-        }
-
-        // Opens the chests of the whole map the purse can pay for, the nearest first (every hero its own one), and fights
-        // back on the way. The order ends when no chest is left that the purse (minus what others will spend) can pay.
+        // Opens the chests of the whole map the purse can pay for, the nearest first (every hero its own one), and
+        // fights back on the way. The order ends when no chest is left that the purse (minus what others will spend) can pay.
         private void ThinkSeekChests(CharacterBody self, Vector3 pos)
         {
             Anchor = pos;
-            CharacterBody enemy = Perception.FindBestEnemy(self, pos, AcquireDefensive, requireLineOfSight: true, current: Enemy);
-            if (enemy)
-            {
-                Enemy = enemy;
-                Mode = BrainMode.Fight;
-                DebugState = "seek chests: fighting";
-                return;
-            }
-            Enemy = null;
-            Mode = BrainMode.Idle;
-            if (Time.time < chestScanAt)
-            {
-                DebugState = "seek chests: looking";
-                return;
-            }
-            chestScanAt = Time.time + 0.5f;
+            CharacterBody enemy = Pick(self, Search(pos, Profile.acquireDefensive, Tether.Free));
+            if (enemy) { Fight(enemy, Tether.Free, standStill: false, mobility: true, "seek chests: fighting"); return; }
 
-            PurchaseInteraction chest = NearestChestOnMap(pos, out float distance);
-            if (!chest)
+            Stand("seek chests: looking");
+            if (!loot.PlanSeekTrip(pos, out bool waiting, out float distance))
             {
-                DebugState = "seek chests: nothing left to buy";
                 Finish();
-                return;
+                Stand("seek chests: nothing left to buy");
             }
-            // about 4 m/s counted with fights and detours, like a trip ordered by a click
-            float budget = Mathf.Clamp(30f + distance * 1.6f / 4f, 45f, 300f);
-            Errand(new Order { Kind = OrderKind.Interact, Target = chest.gameObject, Point = chest.transform.position, auto = true, walkBudget = budget },
-                queued: false);
-            DebugState = $"seek chests: going to one ({distance:0} m)";
-            if (Settings.VerboseLog.Value) Plugin.Log.LogInfo($"{Hero}: seeking a chest (${chest.cost}) at {chest.transform.position:0}");
+            else if (!waiting) DebugState = $"seek chests: going to one ({distance:0} m)";
         }
 
-        /// <summary>Chests the hero could open now: affordable (minus the gold others are on the way to spend), not taken.</summary>
-        internal int CountChestsToSeek() => ChestsOnMap(Hero != null && Hero.Body ? Hero.Body.footPosition : Vector3.zero, out _, out int n) ? n : 0;
-
-        private PurchaseInteraction NearestChestOnMap(Vector3 pos, out float distance)
-        {
-            ChestsOnMap(pos, out PurchaseInteraction best, out _);
-            distance = best ? Vector3.Distance(best.transform.position, pos) : 0f;
-            return best;
-        }
-
-        private bool ChestsOnMap(Vector3 pos, out PurchaseInteraction best, out int count)
-        {
-            best = null;
-            count = 0;
-            long spare = (long)Economy.Gold - GoldClaimedByOthers();
-            float bestSqr = float.MaxValue;
-            var all = InstanceTracker.GetInstancesList<PurchaseInteraction>();
-            for (int i = 0; i < all.Count; i++)
-            {
-                PurchaseInteraction p = all[i];
-                if (!p || !p.available || p.costType != CostTypeIndex.Money || p.cost > spare) continue;
-                GameObject go = p.gameObject;
-                if (skipNearby.Contains(go) || Interactables.KindOf(go) != InteractKind.Chest || ClaimedByAnother(go)) continue;
-                count++;
-                Vector3 d = p.transform.position - pos;
-                d.y *= 2f;
-                float sqr = d.sqrMagnitude;
-                if (sqr < bestSqr) { bestSqr = sqr; best = p; }
-            }
-            return count > 0;
-        }
-
-        // ---- helpers -----------------------------------------------------------------------------------
-
-        private void GoTo(Vector3 destination, Vector3 pos, bool sprintFar, bool skills)
-        {
-            Mode = BrainMode.Go;
-            Goal = destination;
-            AllowSkills = skills;
-            Sprint = sprintFar && (destination - pos).sqrMagnitude > 10f * 10f;
-        }
+        // ---- helpers --------------------------------------------------------------------------------------------
 
         private static bool Arrived(Vector3 pos, Vector3 point)
         {
             Vector3 d = point - pos;
-            d.y *= 0.4f; // vertical slack: the goal point is often a few meters above the node
+            d.y *= ArriveVerticalShare;
             return d.sqrMagnitude <= ArriveDistance * ArriveDistance;
         }
 
         private void Finish()
         {
             Current = null;
-            Enemy = null;
             thinkTimer = 0f;
         }
 
-        // Watches for a hero that tries to go somewhere but does not get there.
-        private void TrackProgress(Vector3 pos)
+        // A target the hero chases without getting closer and without hitting it (a flier over a pit, a monster on a
+        // ledge, a wall in the way) is given up for a while: the next think picks another one.
+        private void WatchEngagement(CharacterBody self)
         {
-            bool travelling = Mode == BrainMode.Go;
-            if (!travelling || (pos - progressPos).sqrMagnitude > 1.2f * 1.2f)
+            // a hero told to stay (hold, passive stance) cannot close in: that is no sign of an unreachable target
+            bool held = StandStill || (Current != null && Current.Kind == OrderKind.Hold);
+            if (Mode != BrainMode.Fight || !Enemy || held)
             {
-                progressPos = pos;
-                progressTime = Time.time;
-                Stuck = false;
+                watchTarget = null;
                 return;
             }
-            Stuck = Time.time - progressTime > StuckSeconds;
+            float distance = (Enemy.corePosition - self.corePosition).magnitude;
+            float now = Time.time;
+            if (Enemy != watchTarget)
+            {
+                watchTarget = Enemy;
+                watchBest = distance;
+                watchSince = now;
+                return;
+            }
+            bool attacking = ai && ai.bodyLastSkillActivation.activationTime.timeSince < AttackingGrace;
+            if (attacking || distance < watchBest - ProgressMeters)
+            {
+                watchBest = Mathf.Min(watchBest, distance);
+                watchSince = now;
+                return;
+            }
+            if (now - watchSince < AiTuning.UnreachableSeconds.Value) return;
+
+            picker.MarkUnreachable(Enemy, UnreachableMemory);
+            if (Current != null && Current.Kind == OrderKind.Attack) Current.unreachableStrikes++;
+            if (Settings.VerboseLog.Value) Plugin.Log.LogInfo($"{Hero}: cannot reach {Enemy.name} ({distance:0} m), taking another target");
+            watchTarget = null;
+            Stand("target out of reach");
+            thinkTimer = 0f;
         }
 
-        private void PushEnemyToAi(BaseAI ai)
+        private void PushEnemyToAi()
         {
-            if (ai == null) return;
-
+            if (!ai) return;
             if (Mode == BrainMode.Fight && Enemy && Enemy.healthComponent && Enemy.healthComponent.alive)
             {
                 if (ai.currentEnemy.gameObject != Enemy.gameObject)
@@ -1072,10 +852,11 @@ namespace HighCommand.Orders
                 }
                 ai.enemyAttention = ai.enemyAttentionDuration;
             }
-            else if (Mode == BrainMode.Go || Mode == BrainMode.Cast)
+            else if (ai.currentEnemy.gameObject)
             {
-                // while travelling the AI must not be dragged along by its own target search
-                if (ai.currentEnemy.gameObject) ai.currentEnemy.Reset();
+                // the brain alone decides whom to fight: the game's own search (any monster in sight) must not pull
+                // the skill drivers towards something else
+                ai.currentEnemy.Reset();
             }
         }
     }

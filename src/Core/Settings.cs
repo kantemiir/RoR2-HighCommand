@@ -215,6 +215,8 @@ namespace HighCommand
                 "Place the audio listener on the ground below the camera focus instead of on the high camera, so battle sounds stay audible.");
 
             VerboseLog = cfg.Bind("Dev", "VerboseLog", false, "Write extra diagnostic lines to the BepInEx log.");
+
+            AiTuning.Bind(cfg);
         }
 
         /// <summary>

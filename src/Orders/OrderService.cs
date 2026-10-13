@@ -109,8 +109,9 @@ namespace HighCommand.Orders
                     order.Point2 = order.Point;
                     order.Point = heroes[i].Position;
                 }
+                // a hero given "hold" mid-leap holds where it stands on the ground, not a point in the air
                 if (command.Kind == OrderKind.Hold || command.Kind == OrderKind.Stop)
-                    order.Point = heroes[i].Position;
+                    order.Point = heroes[i].Body ? Formation.GroundBelow(heroes[i].Body.footPosition) : heroes[i].Position;
 
                 brain.Issue(order, command.Queue);
             }

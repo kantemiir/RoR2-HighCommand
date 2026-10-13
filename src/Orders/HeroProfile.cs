@@ -7,14 +7,17 @@ namespace HighCommand.Orders
 {
     /// <summary>
     /// How one kind of hero behaves on its own, as plain data (see <see cref="ProfileStore"/>). The skills themselves
-    /// are chosen by the game's own AI rules for the survivor; a profile adds ranges, a flee threshold and a usage rule
-    /// per skill slot.
+    /// are chosen by the game's own AI rules for the survivor; a profile adds ranges, a flee threshold, a usage rule per
+    /// skill slot and which skills carry the hero somewhere.
     ///
     /// Rules: "auto" (the survivor's AI decides), "never", "escape" (only when hurt or fleeing), "engage" (only against
-    /// a target that is far away: gap closers), "burst" (only when several enemies are close or the target is a boss).
+    /// a target that is far away: gap closers), "burst" (when several enemies are close or the target is a boss - or
+    /// when the skill has waited for that a whole fight long, see AI/BurstHoardSeconds).
     /// </summary>
     public sealed class HeroProfile
     {
+        public const string RuleAuto = "auto", RuleNever = "never", RuleEscape = "escape", RuleEngage = "engage", RuleBurst = "burst";
+
         public string survivor = "*";        // SurvivorDef.cachedName, "*" = every survivor without an own profile
         public string role = "";             // informative
 
@@ -23,33 +26,47 @@ namespace HighCommand.Orders
         public float leashAggressive = 60f;
         public float leashDefensive = 42f;
 
-        public float retreatHealth = 0.28f;  // below this fraction (and enemies near) the hero runs to its friends
-        public float recoverHealth = 0.55f;  // back to the fight above this
+        public float retreatHealth = 0.28f;  // below this fraction, and under attack, the hero runs to its friends
+        public float recoverHealth = 0.55f;  // back to the fight above this (or as soon as nobody is after it)
 
-        public string primary = "auto";
-        public string secondary = "auto";
-        public string utility = "auto";
-        public string special = "auto";
-        public string equipment = "auto";
+        public string primary = RuleAuto;
+        public string secondary = RuleAuto;
+        public string utility = RuleAuto;
+        public string special = RuleAuto;
+        public string equipment = RuleAuto;  // auto | never (which pieces are used when: the AI section of the config)
 
         public int burstEnemies = 3;         // "burst": at least this many enemies within 20 m
         public float engageDistance = 14f;   // "engage": the target is at least this far away
 
         /// <summary>
         /// Skill slot (0..3) that carries the hero out of a lost fight (a dash, blink, roll, smoke bomb), pressed while it
-        /// flees, aimed and moving away from the enemies; -1 = none. Only movement skills belong here: a wall or a mine
-        /// thrown away from the enemies would not help.
+        /// flees or retreats, aimed and moving away from the enemies; -1 = none.
         /// </summary>
         public int fleeSlot = -1;
 
         /// <summary>
-        /// Ranged heroes: the distance (m) they keep from the enemy they fight. The game's AI rules for survivors were
-        /// written for Umbra-style hunters that always close in; a 90 HP archer walking up to a Lemurian dies in seconds.
-        /// Closer than 65 % of this: back off; closer than this: circle instead of advancing. 0 = melee, no limit.
+        /// Ranged heroes: the distance (m) they keep from the enemy they fight; never more than their attacks reach.
+        /// Closer than 60 % of it they back off, otherwise they sidestep while shooting. 0 = melee: straight at the enemy.
         /// </summary>
         public float standoff;
 
-        internal HeroProfile Copy() => (HeroProfile)MemberwiseClone();
+        /// <summary>
+        /// Skills that move the hero (a dash, a leap, a grapple), comma separated: slot names (primary, secondary, utility,
+        /// special) and/or the skills' own names for a skill of another loadout (FlyUp = the Artificer's Ion Surge).
+        /// They are not used on hold, out of a zone or after a target on another level.
+        /// </summary>
+        public string mobility = "";
+
+        private bool[] mobileSlots;
+        private HashSet<string> mobileSkills;
+
+        internal HeroProfile Copy()
+        {
+            var p = (HeroProfile)MemberwiseClone();
+            p.mobileSlots = null;
+            p.mobileSkills = null;
+            return p;
+        }
 
         internal string RuleFor(int slot)
         {
@@ -60,6 +77,36 @@ namespace HighCommand.Orders
                 case 2: return utility;
                 case 3: return special;
                 default: return equipment;
+            }
+        }
+
+        /// <param name="skillName">the name of the skill in that slot now (SkillDef.skillName), may be null</param>
+        internal bool IsMobility(int slot, string skillName)
+        {
+            if (mobileSlots == null)
+            {
+                mobileSlots = new bool[4];
+                mobileSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (string part in (mobility ?? "").Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    int s = SlotOf(part);
+                    if (s >= 0) mobileSlots[s] = true;
+                    else mobileSkills.Add(part.Trim());
+                }
+            }
+            if (slot >= 0 && slot < 4 && mobileSlots[slot]) return true;
+            return skillName != null && mobileSkills.Contains(skillName);
+        }
+
+        private static int SlotOf(string name)
+        {
+            switch (name.Trim().ToLowerInvariant())
+            {
+                case "primary": return 0;
+                case "secondary": return 1;
+                case "utility": return 2;
+                case "special": return 3;
+                default: return -1;
             }
         }
 
@@ -86,7 +133,8 @@ namespace HighCommand.Orders
                 burstEnemies = MiniJson.Int(o, "burstEnemies", d.burstEnemies),
                 engageDistance = MiniJson.Float(o, "engageDistance", d.engageDistance),
                 fleeSlot = MiniJson.Int(o, "fleeSlot", d.fleeSlot),
-                standoff = MiniJson.Float(o, "standoff", d.standoff)
+                standoff = MiniJson.Float(o, "standoff", d.standoff),
+                mobility = MiniJson.String(o, "mobility", d.mobility)
             };
             return p;
         }
@@ -111,6 +159,7 @@ namespace HighCommand.Orders
             N("engageDistance", engageDistance);
             N("fleeSlot", fleeSlot);
             N("standoff", standoff);
+            S("mobility", mobility);
             S("primary", primary);
             S("secondary", secondary);
             S("utility", utility);
@@ -123,10 +172,13 @@ namespace HighCommand.Orders
 
     /// <summary>
     /// Loads <c>profiles\hero_profiles.json</c> next to the plugin (written with sensible defaults the first time).
-    /// A broken file never breaks the game: the built-in defaults are used and the problem is logged.
+    /// A broken file never breaks the game: the built-in defaults are used and the problem is logged. A file of an older
+    /// format version is set aside (.old) and replaced: its numbers were tuned for an AI that no longer exists.
     /// </summary>
     internal static class ProfileStore
     {
+        internal const int FormatVersion = 2;
+
         private static readonly Dictionary<string, HeroProfile> ByName = new Dictionary<string, HeroProfile>(StringComparer.OrdinalIgnoreCase);
         private static HeroProfile fallback = new HeroProfile();
         private static bool loaded;
@@ -169,10 +221,19 @@ namespace HighCommand.Orders
                     var list = root != null && root.TryGetValue("profiles", out object raw) ? raw as List<object> : null;
                     if (list == null || list.Count == 0) throw new InvalidDataException("no \"profiles\" array in the file");
 
-                    profiles = new List<HeroProfile>();
-                    foreach (object item in list)
+                    int version = root != null ? MiniJson.Int(root, "version", 1) : 1;
+                    if (version < FormatVersion)
                     {
-                        if (item is Dictionary<string, object> dict) profiles.Add(HeroProfile.FromJson(dict));
+                        File.Copy(path, path + ".old", overwrite: true);
+                        Plugin.Log.LogInfo($"Hero profiles: format {version} is older than {FormatVersion}; the file was saved as .old and replaced by the new defaults.");
+                    }
+                    else
+                    {
+                        profiles = new List<HeroProfile>();
+                        foreach (object item in list)
+                        {
+                            if (item is Dictionary<string, object> dict) profiles.Add(HeroProfile.FromJson(dict));
+                        }
                     }
                 }
             }
@@ -206,12 +267,13 @@ namespace HighCommand.Orders
             Plugin.Log.LogInfo($"Hero profiles: {ByName.Count} survivor profile(s) + fallback loaded.");
         }
 
-        private static string Serialize(List<HeroProfile> profiles)
+        internal static string Serialize(List<HeroProfile> profiles)
         {
             var sb = new System.Text.StringBuilder();
             sb.Append("{\n");
-            sb.Append("  \"version\": 1,\n");
-            sb.Append("  // rules per skill slot: auto | never | escape | engage | burst (see the mod's README)\n");
+            sb.Append("  \"version\": ").Append(FormatVersion).Append(",\n");
+            sb.Append("  // rules per skill slot: auto | never | escape | engage | burst; mobility: slots (or skill names) whose skill moves the hero\n");
+            sb.Append("  // standoff: the distance a ranged hero keeps (0 = melee); fleeSlot: the skill used to get away (-1 = none)\n");
             sb.Append("  \"profiles\": [\n");
             for (int i = 0; i < profiles.Count; i++)
             {
@@ -234,24 +296,24 @@ namespace HighCommand.Orders
             p.engageDistance = Mathf.Clamp(p.engageDistance, 2f, 80f);
             if (p.fleeSlot < 0 || p.fleeSlot > 3) p.fleeSlot = -1;
             p.standoff = Mathf.Clamp(p.standoff, 0f, 60f);
+            p.primary = KnownRule(p.primary);
+            p.secondary = KnownRule(p.secondary);
+            p.utility = KnownRule(p.utility);
+            p.special = KnownRule(p.special);
+            p.equipment = p.equipment == HeroProfile.RuleNever ? HeroProfile.RuleNever : HeroProfile.RuleAuto;
         }
 
-        /// <summary>
-        /// Survivors whose utility skill is a real "get away" move in the default loadout (it follows the move or aim
-        /// direction): Commando's roll, Huntress' blink, Bandit's smoke bomb, Mercenary's dash, the Void Fiend's trespass.
-        /// </summary>
-        internal static int BuiltInFleeSlot(string survivor)
+        private static string KnownRule(string rule)
         {
-            switch (survivor)
+            switch (rule)
             {
-                case "Commando":
-                case "Huntress":
-                case "Bandit2":
-                case "Merc":
-                case "VoidSurvivor":
-                    return 2;
+                case HeroProfile.RuleNever:
+                case HeroProfile.RuleEscape:
+                case HeroProfile.RuleEngage:
+                case HeroProfile.RuleBurst:
+                    return rule;
                 default:
-                    return -1;
+                    return HeroProfile.RuleAuto;
             }
         }
 
@@ -270,55 +332,58 @@ namespace HighCommand.Orders
             return survivor != null && builtIn.TryGetValue(survivor, out HeroProfile found) ? found.Copy() : null;
         }
 
-        private static HeroProfile P(string survivor, string role, float retreat, float standoff = 0f, string utility = "auto", string special = "auto",
-            string secondary = "auto", float acquire = 55f, float leash = 60f)
+        private static HeroProfile P(string survivor, string role, float retreat, float standoff = 0f, string mobility = "",
+            int fleeSlot = -1, string utility = HeroProfile.RuleAuto, string special = HeroProfile.RuleAuto,
+            float acquire = 55f, float leash = 60f)
         {
             return new HeroProfile
             {
                 survivor = survivor,
-                fleeSlot = BuiltInFleeSlot(survivor),
-                standoff = standoff,
                 role = role,
                 retreatHealth = retreat,
                 recoverHealth = Mathf.Min(0.9f, retreat + 0.3f),
+                standoff = standoff,
+                mobility = mobility,
+                fleeSlot = fleeSlot,
                 utility = utility,
                 special = special,
-                secondary = secondary,
                 acquireAggressive = acquire,
                 leashAggressive = leash
             };
         }
 
-        private static List<HeroProfile> Defaults()
+        internal static List<HeroProfile> Defaults()
         {
+            const string Utility = "utility";
+            const string Escape = HeroProfile.RuleEscape, Engage = HeroProfile.RuleEngage, Burst = HeroProfile.RuleBurst;
             var l = new List<HeroProfile>();
             l.Add(new HeroProfile { survivor = "*", role = "Survivor" });
 
-            // ranged damage: keep their distance, flee early
-            l.Add(P("Commando", "Ranged", 0.3f, standoff: 18f, utility: "escape", special: "burst"));
-            l.Add(P("Huntress", "Ranged", 0.35f, standoff: 24f, utility: "escape", special: "burst", acquire: 62f));
-            l.Add(P("Chef", "Ranged", 0.3f, standoff: 12f, utility: "escape", special: "burst"));
-            l.Add(P("Railgunner", "Sniper", 0.35f, standoff: 30f, utility: "escape", special: "burst", acquire: 70f, leash: 75f));
-            l.Add(P("Mage", "Caster", 0.35f, standoff: 18f, utility: "escape", special: "burst"));
-            l.Add(P("VoidSurvivor", "Caster", 0.3f, standoff: 14f, utility: "escape", special: "burst"));
+            // ranged damage: keep their distance, run early, the roll / blink is kept for getting away
+            l.Add(P("Commando", "Ranged", 0.3f, standoff: 18f, mobility: Utility, fleeSlot: 2, utility: Escape, special: Burst));
+            l.Add(P("Huntress", "Ranged", 0.35f, standoff: 24f, mobility: Utility, fleeSlot: 2, utility: Escape, special: Burst, acquire: 62f));
+            l.Add(P("Chef", "Ranged", 0.3f, standoff: 12f, mobility: Utility, utility: Engage, special: Burst));
+            l.Add(P("Railgunner", "Sniper", 0.35f, standoff: 30f, utility: Escape, special: Burst, acquire: 70f, leash: 75f));
+            l.Add(P("Mage", "Caster", 0.35f, standoff: 18f, mobility: "FlyUp", special: Burst));
+            l.Add(P("VoidSurvivor", "Caster", 0.3f, standoff: 14f, mobility: Utility, fleeSlot: 2, utility: Escape, special: Burst));
+            l.Add(P("Bandit2", "Assassin", 0.3f, standoff: 10f, fleeSlot: 2, utility: Escape, special: Burst, acquire: 52f));
 
-            // melee and tanks: stay in the fight longer, use gap closers to engage
-            l.Add(P("Merc", "Assassin", 0.25f, utility: "engage", special: "burst", acquire: 48f));
-            l.Add(P("Bandit2", "Assassin", 0.3f, standoff: 10f, utility: "escape", special: "burst", acquire: 52f));
-            l.Add(P("Loader", "Melee", 0.22f, utility: "engage", special: "burst", acquire: 46f));
-            l.Add(P("Croco", "Melee", 0.18f, utility: "auto", special: "burst", acquire: 42f));
-            l.Add(P("Toolbot", "Tank", 0.2f, utility: "auto", special: "auto", acquire: 48f));
-            l.Add(P("FalseSon", "Tank", 0.2f, utility: "engage", special: "burst", acquire: 46f));
-            l.Add(P("Enforcer2", "Tank", 0.2f, utility: "auto", special: "auto", acquire: 46f));
-            l.Add(P("Drifter", "Melee", 0.22f, utility: "engage", special: "burst", acquire: 46f));
-            l.Add(P("Acolyte", "Melee", 0.22f, utility: "engage", special: "burst", acquire: 46f));
+            // melee and tanks: stay in the fight longer, gap closers open the fight from afar
+            l.Add(P("Merc", "Assassin", 0.25f, mobility: "secondary,utility,special", fleeSlot: 2, utility: Engage, special: Burst, acquire: 48f));
+            l.Add(P("Loader", "Melee", 0.22f, mobility: "secondary,utility", utility: Engage, special: Burst, acquire: 46f));
+            l.Add(P("Croco", "Melee", 0.18f, mobility: Utility, special: Burst, acquire: 42f));
+            l.Add(P("Toolbot", "Tank", 0.2f, standoff: 12f, mobility: Utility, acquire: 48f));
+            l.Add(P("FalseSon", "Tank", 0.2f, mobility: Utility, utility: Engage, special: Burst, acquire: 46f));
+            l.Add(P("Enforcer2", "Tank", 0.2f, standoff: 10f, mobility: "utility,special", acquire: 46f));
+            l.Add(P("Drifter", "Melee", 0.22f, mobility: Utility, utility: Engage, special: Burst, acquire: 46f));
+            l.Add(P("Acolyte", "Melee", 0.22f, mobility: Utility, utility: Engage, special: Burst, acquire: 46f));
 
-            // support and summoners: far behind the line, early retreat
-            l.Add(P("Engi", "Summoner", 0.35f, standoff: 18f, utility: "auto", special: "auto"));
-            l.Add(P("DroneTech", "Summoner", 0.35f, standoff: 18f, utility: "auto", special: "auto"));
-            l.Add(P("Treebot", "Support", 0.3f, standoff: 14f, utility: "escape", special: "auto"));
-            l.Add(P("Seeker", "Support", 0.3f, standoff: 12f, utility: "escape", special: "auto"));
-            l.Add(P("Captain", "Support", 0.3f, standoff: 18f, utility: "auto", special: "burst"));
+            // support and summoners: behind the line, early retreat
+            l.Add(P("Engi", "Summoner", 0.35f, standoff: 18f));
+            l.Add(P("DroneTech", "Summoner", 0.35f, standoff: 18f, mobility: Utility));
+            l.Add(P("Treebot", "Support", 0.3f, standoff: 14f));
+            l.Add(P("Seeker", "Support", 0.3f, standoff: 12f, mobility: Utility));
+            l.Add(P("Captain", "Support", 0.3f, standoff: 18f));
             return l;
         }
     }

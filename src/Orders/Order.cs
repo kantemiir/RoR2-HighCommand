@@ -56,6 +56,10 @@ namespace HighCommand.Orders
         internal float walkBudget = 45f; // Interact: seconds of walking before the hero gives up (set from the walk's length)
         internal bool reachKnown;        // Interact: the spot next to the object the hero walks to
         internal Vector3 reach;
+        internal bool engaged;           // AttackMove / Patrol: fighting what was met on the way ...
+        internal Vector3 engagedAt;      // ... from about here (the leash is measured from this point)
+        internal float lostAt = -1f;     // Attack: when the target went out of sight (cloaked); -1 = it is seen
+        internal int unreachableStrikes; // Attack: times the target could be neither reached nor hit
 
         public bool HasPoint => Kind == OrderKind.Move || Kind == OrderKind.AttackMove || Kind == OrderKind.Retreat
                                 || Kind == OrderKind.Patrol || Kind == OrderKind.Hold || Kind == OrderKind.Cast;

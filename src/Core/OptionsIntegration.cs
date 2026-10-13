@@ -61,6 +61,18 @@ namespace HighCommand
                 Check(Settings.AllowHiddenSurvivors);
                 Check(Settings.AutoRetreat);
 
+                // the heroes' AI (the equipment lists stay in the .cfg file)
+                Slider(AiTuning.HoldRadius, 0f, 15f, "{0:0.0}");
+                Slider(AiTuning.AttackMoveRange, 10f, 100f, "{0:0}");
+                Slider(AiTuning.AttackMoveLeash, 5f, 100f, "{0:0}");
+                Slider(AiTuning.AssistRange, 0f, 150f, "{0:0}");
+                Slider(AiTuning.FocusFireWeight, 0f, 3f, "{0:0.0}");
+                Slider(AiTuning.UnreachableSeconds, 1f, 20f, "{0:0.0}");
+                Slider(AiTuning.BurstHoardSeconds, 0f, 60f, "{0:0}");
+                Slider(AiTuning.FleeMaxSeconds, 3f, 60f, "{0:0}");
+                Check(AiTuning.UnstuckTeleport);
+                Check(AiTuning.AutoEquipment);
+
                 // run
                 Slider(Settings.ThreatPerExtraHero, 0f, 2f);
                 Slider(Settings.DefeatGraceBroke, 0f, 120f, "{0:0}");

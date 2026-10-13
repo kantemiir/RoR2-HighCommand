@@ -58,6 +58,7 @@ namespace HighCommand.Orders
             for (int i = 0; i < n; i++) order.Add(i);
             order.Sort((a, b) => (current[a] - point).sqrMagnitude.CompareTo((current[b] - point).sqrMagnitude));
 
+            Vector3 center = SnapToGround(point);
             foreach (int hero in order)
             {
                 int best = -1;
@@ -69,9 +70,32 @@ namespace HighCommand.Orders
                     if (d < bestDist) { bestDist = d; best = s; }
                 }
                 used[best] = true;
-                result[hero] = SnapToGround(point + slots[best]);
+                result[hero] = SlotOnLevel(point, slots[best], center);
             }
             return result;
+        }
+
+        private const float SlotLevelTolerance = 3f;
+
+        // A slot next to a cliff edge snaps to the nearest node, which may be at the foot of the cliff: the hero would walk
+        // all the way round to another level. Such a slot is pulled in towards the clicked point, or given up for it.
+        private static Vector3 SlotOnLevel(Vector3 point, Vector3 offset, Vector3 center)
+        {
+            for (float share = 1f; share > 0.2f; share -= 0.5f)
+            {
+                Vector3 p = SnapToGround(point + offset * share);
+                if (Mathf.Abs(p.y - center.y) <= SlotLevelTolerance) return p;
+            }
+            return center;
+        }
+
+        /// <summary>The ground right under a point (a hero in the air, mid-leap), or the point itself when none is found.</summary>
+        internal static Vector3 GroundBelow(Vector3 p)
+        {
+            const float Up = 0.5f, Down = 100f;
+            return Physics.Raycast(p + Vector3.up * Up, Vector3.down, out RaycastHit hit, Up + Down, LayerIndex.world.mask, QueryTriggerInteraction.Ignore)
+                ? hit.point
+                : p;
         }
 
         private static Vector3 BlobSlot(int index, float spacing)
