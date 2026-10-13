@@ -41,6 +41,7 @@ namespace HighCommand.Orders
         public OrderKind Kind;
         public Vector3 Point;
         public Vector3 Point2;           // patrol: the other end
+        public Vector3 Mark;             // the clicked point (the formation's middle): the order's mark stands there
         public GameObject Target;        // enemy body / friendly hero body / interactable
         public NetworkInstanceId TargetId;
         public int Slot = -1;            // Cast: 0..3 skill, 4 equipment

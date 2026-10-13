@@ -1,0 +1,16 @@
+﻿# Dumps game assets (hierarchy, materials, textures as PNG into screenshots\assets) — to build visuals from the game's own art.
+@wait 6
+@log === A1 ping
+hc_dump_asset "RoR2/Base/Common/PingIndicator.prefab" save
+@log === A2 position indicators
+hc_dump_asset "RoR2/Base/Common/PoiPositionIndicator.prefab" save
+@log === A3 textures
+hc_dump_asset "RoR2/Base/UI/texChevronPlayer.png" save
+hc_dump_asset "RoR2/Base/UI/texChevronSimpleTriangle.png" save
+hc_dump_asset "RoR2/Base/Common/VFX/ParticleMasks/texSoftGlowRing.png" save
+hc_dump_asset "RoR2/Base/Common/VFX/ParticleMasks/texShockwaveRing1MaskCentered.png" save
+hc_dump_asset "RoR2/Base/Common/VFX/matOmniRing2Generic.mat" save
+hc_dump_asset "RoR2/Base/Common/VFX/matGenericFlash.mat" save
+@wait 2
+@log === END
+@quit

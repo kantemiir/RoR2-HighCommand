@@ -99,10 +99,11 @@ namespace HighCommand.Client
 
         private enum Hover { None, Select, Move, Attack, Follow, Interact }
 
-        private static readonly Color MoveColor = new Color(0.4f, 1f, 0.5f, 1f);
-        private static readonly Color AttackColor = new Color(1f, 0.35f, 0.3f, 1f);
+        // a place, an enemy, an object: the colours of the game's pings
+        private static readonly Color MoveColor = OrderBeacons.PingGreen;
+        private static readonly Color AttackColor = OrderBeacons.PingRed;
         private static readonly Color FollowColor = new Color(0.5f, 0.8f, 1f, 1f);
-        private static readonly Color InteractColor = new Color(1f, 0.9f, 0.3f, 1f);
+        private static readonly Color InteractColor = OrderBeacons.PingYellow;
         private static readonly Color OrangeColor = new Color(1f, 0.6f, 0.25f, 1f);
 
         // labels are built once per (kind, queued): the badge asks every frame
@@ -151,7 +152,7 @@ namespace HighCommand.Client
                 info.Glyph = ModeGlyph(out info.Color);
                 if (!overUi) FindPoint(mouse, onMap, ref info);
                 bool lineMode = Mode == Pending.AttackMove || Mode == Pending.Patrol;
-                info.Preview = lineMode && info.HasPoint && selection.Count > 0;
+                info.Preview = lineMode && info.HasPoint && selection.Count > 0 && (info.Queued || Settings.AlwaysShowRoutes.Value);
                 Cursor = info;
                 return;
             }
@@ -179,10 +180,11 @@ namespace HighCommand.Client
             }
             else info.Label = LabelFor(t.Kind, info.Queued && t.Kind != Hover.Select);
 
-            // the line shows only when the pointer is on something (an enemy, a friend, an object) or the player is
-            // planning a queue with Shift; over bare ground the badge alone is enough
+            // lines show only while Shift is held (the user's call: no lines on the map otherwise); with
+            // Interface/AlwaysShowRoutes a thing under the pointer (an enemy, a friend, an object) gets its line anyway
             bool onSomething = t.Kind == Hover.Attack || t.Kind == Hover.Follow || t.Kind == Hover.Interact;
-            info.Preview = info.HasPoint && (onSomething || (t.Kind == Hover.Move && info.Queued))
+            bool lines = info.Queued || Settings.AlwaysShowRoutes.Value;
+            info.Preview = info.HasPoint && ((onSomething && lines) || (t.Kind == Hover.Move && info.Queued))
                            && (selection.Count > 0 || info.Runner != null);
             Cursor = info;
         }
@@ -725,9 +727,9 @@ namespace HighCommand.Client
             var cmd = new OrderCommand { HeroIds = SelectedIds(), Kind = kind, Point = point, Queue = queued, Formation = formation };
             OrderService.Submit(cmd);
 
-            Color color = kind == OrderKind.Move ? new Color(0.4f, 1f, 0.5f, 1f)
-                        : kind == OrderKind.Retreat ? new Color(0.5f, 0.8f, 1f, 1f)
-                        : new Color(1f, 0.55f, 0.3f, 1f);
+            Color color = kind == OrderKind.Move ? MoveColor
+                        : kind == OrderKind.Retreat ? FollowColor
+                        : new Color(1f, 0.55f, 0.25f, 1f);
             Feedback.Ping(point, color, 1.0f);
             Feedback.Confirm();
         }
@@ -739,7 +741,7 @@ namespace HighCommand.Client
             var cmd = new OrderCommand { HeroIds = SelectedIds(), Kind = kind, TargetId = id.netId, Focus = focus, Queue = queued, Point = target.corePosition };
             OrderService.Submit(cmd);
 
-            Color color = kind == OrderKind.Attack ? new Color(1f, 0.3f, 0.25f, 1f) : new Color(0.4f, 1f, 0.5f, 1f);
+            Color color = kind == OrderKind.Attack ? AttackColor : MoveColor;
             Feedback.Ping(target.corePosition, color, 1.1f);
             Feedback.Confirm();
         }
@@ -751,7 +753,7 @@ namespace HighCommand.Client
             if (!id) return;
             var cmd = new OrderCommand { HeroIds = heroIds, Kind = kind, TargetId = id.netId, Queue = queued, Point = target.transform.position };
             OrderService.Submit(cmd);
-            Feedback.Ping(target.transform.position, new Color(1f, 0.9f, 0.3f, 1f), 1.1f);
+            Feedback.Ping(target.transform.position, InteractColor, 1.1f);
             Feedback.Confirm();
         }
 
@@ -779,7 +781,7 @@ namespace HighCommand.Client
         }
     }
 
-    /// <summary>Order confirmation: markers on the ground and a click sound.</summary>
+    /// <summary>Order confirmation: a shockwave on the ground (drawn by <see cref="OrderBeacons"/>) and a click sound.</summary>
     internal static class Feedback
     {
         internal struct PingMarker
@@ -811,7 +813,7 @@ namespace HighCommand.Client
 
         internal static void Ping(Vector3 world, Color color, float size)
         {
-            Pings.Add(new PingMarker { position = world, color = color, born = Time.unscaledTime, life = 1.0f, size = size });
+            Pings.Add(new PingMarker { position = world, color = color, born = Time.unscaledTime, life = 0.7f, size = size });
         }
 
         internal static void Confirm()

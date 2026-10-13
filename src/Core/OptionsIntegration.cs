@@ -41,6 +41,7 @@ namespace HighCommand
 
                 // interface
                 Slider(Settings.UiScale, 0.6f, 1.6f);
+                Check(Settings.AlwaysShowRoutes);
 
                 // minimap
                 Check(Settings.MinimapEnabled);

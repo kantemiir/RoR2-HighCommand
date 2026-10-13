@@ -41,6 +41,7 @@ namespace HighCommand
         // ---- interface ----
         internal static ConfigEntry<float> UiScale;
         internal static ConfigEntry<bool> Alerts;
+        internal static ConfigEntry<bool> AlwaysShowRoutes;
 
         // ---- economy / army ----
         internal static ConfigEntry<int> StartingGold;
@@ -164,6 +165,7 @@ namespace HighCommand
             KeyLastAlert = cfg.Bind("Keys", "LastAlert", KeyCode.Backspace, "Fly the camera to the place of the last alert (a fallen or nearly dead hero).");
             KeyResetCamera = cfg.Bind("Keys", "ResetCamera", KeyCode.Home, "Reset the camera's turn, tilt and zoom to the start view and bring its height back onto the ground under it (it stays where it looks).");
             Alerts = cfg.Bind("Interface", "Alerts", true, "Message, sound and a mark on the map when a hero falls or is nearly dead.");
+            AlwaysShowRoutes = cfg.Bind("Interface", "AlwaysShowRoutes", false, "Always draw the selected heroes' routes to their orders. Off: an order shows only as a mark at its place, the routes and the queued orders appear while Shift is held.");
 
             UiScale = F("Interface", "UiScale", 1.0f, 0.6f, 1.6f,
                 "Size of the whole interface of the mode: 1 = normal, 1.25 = bigger text and panels, 0.8 = smaller. It comes on top of the automatic scaling to the screen resolution.");

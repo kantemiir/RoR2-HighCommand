@@ -97,6 +97,7 @@ namespace HighCommand.Orders
                     Kind = command.Kind,
                     Point = destinations != null ? destinations[i] : command.Point,
                     Point2 = command.Point2,
+                    Mark = pointOrder ? command.Point : Vector3.zero,
                     Target = target,
                     TargetId = command.TargetId,
                     Slot = command.Slot,

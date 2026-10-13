@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+* Order marks in the look of the game's ping, no more line and ring on the ground after every order:
+  * the click: a shockwave and a flash on the ground for a moment (also on alerts);
+  * while the order lasts: a thin beam from the place up to the ping's double chevron and the order's picture — the
+    game's own icons: the running man (move), crossed swords (attack, attack-move), the object's own icon (chest,
+    shrine, drone, teleporter ...); retreat / patrol / follow keep the mode's pictures. Over an enemy, a friend or an
+    object the mark hangs above it, without a beam. It pops in like a ping and fades out when the order ends; heroes
+    sent to one place share one mark (at the clicked point, the middle of their formation);
+  * the routes and the queued orders (with their dimmer marks) show only while Shift is held; then the line ends in
+    the ping's chevron. Option `Interface/AlwaysShowRoutes` (off) brings the lines back for good.
+  * The colours of a place, an enemy and an object are now the game's ping colours (green, red, yellow).
+* Dev: `hc_dump_asset <addressable key> [save]` prints a prefab's renderers, materials and sprites and can save its
+  textures as PNG (scenario `assetdump`); scenario `beacon` checks the marks; `hc_overlay` counts them.
+
 * Camera tilt: the middle button tilts the view at any zoom and from anywhere, from almost along the ground (2°) to
   straight down at the map (90°). Before, close up the zoom tilt held the view down near the ground, so the drag did
   little; now the zoom tilt is a step of the wheel (zooming in lowers the tilt, zooming out brings back the one you set)

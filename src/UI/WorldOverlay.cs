@@ -65,8 +65,9 @@ namespace HighCommand.UI
             tagLayer = UiKit.NewRect("PriceTags", layer);
             UiKit.Stretch(tagLayer);
 
-            // the order routes lie under the rings and the bars
+            // the order routes lie under the rings and the bars, the order marks over the routes
             routeLines = RouteMesh.Create("RouteLines", layer, UiKit.SoftLine.texture);
+            beacons = new OrderBeacons(layer);
 
             // The selection box: a faint mint tint, a hairline border and brighter corner brackets. The children are
             // anchored to the box, so they follow its size without being touched again.
@@ -116,9 +117,9 @@ namespace HighCommand.UI
             ghostsUsed = 0;
             edgeMarksUsed = 0;
             arrowheadsUsed = 0;
-            pingsUsed = 0;
             tagsUsed = 0;
             routeLines.Begin();
+            beacons.Begin(camera ? camera.SceneCam : null, layer.lossyScale.x);
 
             if (camera && camera.SceneCam)
             {
@@ -129,11 +130,14 @@ namespace HighCommand.UI
                 DrawGhosts(camera, selection, heroes);
                 DrawBars(camera, selection);
                 DrawOrders(selection, cursor);
-                DrawPings();
+                beacons.DrawFlashes();
                 DrawPopups();
             }
+            beacons.DrawMarks();
             routeLines.End();
+            beacons.End();
             LastRouteVertices = routeLines.Vertices;
+            LastBeacons = beacons.Count;
 
             LastBars = barsUsed;
             LastRings = ringsUsed;
@@ -225,10 +229,9 @@ namespace HighCommand.UI
             return tag;
         }
 
-        // ---- orders: destination markers, lines and pings ----------------------------------------
+        // ---- orders: marks, lines and the pointer badge ------------------------------------------
 
-        private readonly List<Image> pings = new List<Image>(16);
-        private int pingsUsed;
+        private readonly OrderBeacons beacons;
         // the pointer badge: a small dark plate with a picture and a word ("Attack", "Move (queued)" ...)
         private RectTransform badge;
         private Image badgePlate;
@@ -248,12 +251,14 @@ namespace HighCommand.UI
 
         // ---- order routes ----------------------------------------------------------------------
         //
-        // An order is drawn along the way the heroes will really walk (the stage's ground graph), not as a straight line
-        // through hills. Heroes standing together with one order share one line, from their middle to a ring on the
-        // ground as wide as their formation. The line is a smooth ribbon with soft light pulses running to the target;
-        // everything is placed in the world (pulses are measured from the target), so moving the camera moves nothing on
-        // the line. A long way shows its first and last stretch only, the middle fades out. A target off the screen gets
-        // a mark at the screen edge.
+        // An order shows as a mark in the look of the game's ping (OrderBeacons): a flash on the click, then a beam and the
+        // order's picture over the place while the order lasts. The way itself is drawn only while Shift is held (the
+        // user's call: no lines on the map otherwise; Interface/AlwaysShowRoutes brings them back). Then it runs along
+        // the way the heroes will really walk (the stage's ground graph), not as a straight line through hills. Heroes
+        // standing together with one order share one line, from their middle to the mark. The line is a smooth ribbon
+        // with soft light pulses running to the target; everything is placed in the world (pulses are measured from the
+        // target), so moving the camera moves nothing on the line. A long way shows its first and last stretch only, the
+        // middle fades out. A target off the screen gets a mark at the screen edge (with or without Shift).
 
         private enum RouteStyle { Preview, Current, Queued }
 
@@ -289,8 +294,12 @@ namespace HighCommand.UI
 
         private const float RouteLift = 0.3f;     // above the ground nodes, so the line is not cut by the ground
 
+        // the ribbon stops this far before its target, in the light of the mark
+        private const float EndGap = 0.9f;
+
         private void DrawOrders(Selection selection, OrderController.CursorInfo cursor)
         {
+            bool lines = ClientInput.Shift || Settings.AlwaysShowRoutes.Value;
             BuildGroups(selection.Heroes);
             int previews = 0;
             for (int g = 0; g < groupsUsed; g++)
@@ -299,43 +308,44 @@ namespace HighCommand.UI
                 Hero lead = group.Members[0];
                 Vector3 feet = group.Feet;
                 Vector3 last = feet;
+                // The queue and the target live in the server's brain: the mode is single-player, the host reads it.
+                Orders.HeroBrain brain = lead.Brain;
 
                 if (OrderLook(group.Kind, out Color color, out Glyph _) && group.Point0 != Vector3.zero)
                 {
-                    Vector3 end = group.Point;
-                    float radius = TargetRadius(group, end);
-                    float length = DrawRoute(lead, 0, feet, end, color, RouteStyle.Current, radius);
-                    DrawGroundRing(end, radius, color, RouteStyle.Current);
+                    Orders.Order current = brain != null ? brain.Current : null;
+                    Vector3 end = MarkOf(current, group.Kind, group.Point);
+                    // the hero's own trips (a barrel next to it) are not the commander's orders: no mark
+                    if (current == null || !current.auto)
+                        beacons.Want(group.Kind, end, TargetOf(current, group.Kind), false, color);
+                    float length = lines
+                        ? DrawRoute(lead, 0, feet, end, color, RouteStyle.Current, EndGap)
+                        : RouteLength(lead, 0, feet, end);
                     if (length > 0f) AddEdgeTarget(end, group.Kind, length);
                     last = end;
 
-                    // the rest of the queue (Shift orders), dimmer, leg after leg. The queue lives in the server's
-                    // brain: the mode is single-player, so the host reads it directly.
-                    Orders.HeroBrain brain = lead.Brain;
-                    if (brain != null)
+                    // the rest of the queue (Shift orders), dimmer, leg after leg: only while the lines are shown
+                    if (lines && brain != null)
                     {
                         IReadOnlyList<Orders.Order> queue = brain.Queue;
                         for (int q = 0; q < queue.Count && q < 8; q++)
                         {
                             Orders.Order o = queue[q];
                             if (o == null || !OrderLook(o.Kind, out Color qc, out Glyph _)) continue;
-                            Vector3 next = o.Destination();
+                            Vector3 next = MarkOf(o, o.Kind, o.Destination());
                             if (next == Vector3.zero) continue;
-                            float r = IsPlace(o.Kind) ? radius : 1.2f;
-                            DrawRoute(lead, q + 1, last, next, qc, RouteStyle.Queued, r);
-                            DrawGroundRing(next, r, qc, RouteStyle.Queued);
+                            DrawRoute(lead, q + 1, last, next, qc, RouteStyle.Queued, EndGap);
+                            beacons.Want(o.Kind, next, TargetOf(o, o.Kind), true, qc);
                             last = next;
                         }
                     }
                 }
 
-                // where a click would send them: from their middle, or from the end of the queue with Shift held
+                // where a click would send them (Shift held): from their middle, or from the end of the queue
                 if (cursor.Preview && cursor.HasPoint && cursor.Runner == null && previews < PreviewLimit)
                 {
                     previews++;
-                    float r = Mathf.Clamp(0.7f + 0.4f * Mathf.Sqrt(group.Members.Count), 1.2f, 3f);
-                    DrawRoute(lead, RouteCache.Preview, cursor.Queued ? last : feet, cursor.Point, cursor.Color, RouteStyle.Preview, r);
-                    DrawGroundRing(cursor.Point, r, cursor.Color, RouteStyle.Preview);
+                    DrawRoute(lead, RouteCache.Preview, cursor.Queued ? last : feet, cursor.Point, cursor.Color, RouteStyle.Preview, EndGap);
                 }
             }
 
@@ -346,11 +356,39 @@ namespace HighCommand.UI
                 Vector3 start = runner.Body.footPosition;
                 Orders.HeroBrain brain = runner.Brain;
                 if (cursor.Queued && brain != null) start = brain.ErrandsEnd(start);
-                DrawRoute(runner, RouteCache.Preview, start, cursor.Point, cursor.Color, RouteStyle.Preview, 1.2f);
-                DrawGroundRing(cursor.Point, 1.2f, cursor.Color, RouteStyle.Preview);
+                DrawRoute(runner, RouteCache.Preview, start, cursor.Point, cursor.Color, RouteStyle.Preview, EndGap);
             }
+            // a place on the ground gets the chevrons where the click would put the mark (a target is marked by itself)
+            else if (cursor.Preview && cursor.HasPoint && previews > 0 && IsGroundGlyph(cursor.Glyph))
+                beacons.DrawPreview(cursor.Point, cursor.Color);
 
             DrawEdgeTargets();
+        }
+
+        private static bool IsGroundGlyph(Glyph glyph) =>
+            glyph == Glyph.Move || glyph == Glyph.AttackMove || glyph == Glyph.Patrol;
+
+        // the thing an order is about (its mark hangs over it), none for a place on the ground
+        private static GameObject TargetOf(Orders.Order order, Orders.OrderKind kind)
+        {
+            if (order == null || order.Kind != kind || IsPlace(kind)) return null;
+            return order.Target;
+        }
+
+        // a place on the ground: the clicked point, one mark for all the heroes sent there (each walks to its own spot
+        // of the formation round it)
+        private static Vector3 MarkOf(Orders.Order order, Orders.OrderKind kind, Vector3 fallback)
+        {
+            if (order == null || order.Kind != kind || !IsPlace(kind) || order.Mark == Vector3.zero) return fallback;
+            return order.Mark;
+        }
+
+        /// <summary>The length of the way (for the mark at the screen edge) without drawing it.</summary>
+        private float RouteLength(Hero hero, int leg, Vector3 from, Vector3 to)
+        {
+            RouteCache.Route route = routes.Get(hero, leg, from, to);
+            BuildRouteWorld(route.Points, from, to);
+            return routeLength;
         }
 
         private void BuildGroups(IReadOnlyList<Hero> sel)
@@ -362,9 +400,13 @@ namespace HighCommand.UI
                 Hero hero = sel[i];
                 CharacterBody body = hero != null ? hero.Body : null;
                 if (!body) continue;
-                var kind = (Orders.OrderKind)hero.NetOrderKind;
+                // the brain itself when the host has it (single player): the mark comes with the click, not with the
+                // roster's next sync a quarter of a second later
+                Orders.HeroBrain brain = hero.Brain;
+                Orders.Order current = brain != null ? brain.Current : null;
+                var kind = brain != null ? (current != null ? current.Kind : Orders.OrderKind.None) : (Orders.OrderKind)hero.NetOrderKind;
+                Vector3 point = brain != null ? (current != null ? current.Destination() : Vector3.zero) : hero.NetOrderPoint;
                 Vector3 feet = body.footPosition;
-                Vector3 point = hero.NetOrderPoint;
                 bool place = OrderLook(kind, out Color _, out Glyph _);
 
                 RouteGroup group = null;
@@ -395,29 +437,20 @@ namespace HighCommand.UI
         private static bool IsPlace(Orders.OrderKind kind) =>
             kind == Orders.OrderKind.Move || kind == Orders.OrderKind.AttackMove || kind == Orders.OrderKind.Retreat || kind == Orders.OrderKind.Patrol;
 
-        // the ring round a target: as wide as the formation the group will stand in
-        private static float TargetRadius(RouteGroup group, Vector3 end)
-        {
-            if (!IsPlace(group.Kind)) return 1.2f;
-            float spread = 0f;
-            for (int i = 0; i < group.Members.Count; i++)
-                spread = Mathf.Max(spread, Vector3.Distance(group.Members[i].NetOrderPoint, end));
-            return Mathf.Clamp(spread * 0.6f + 0.9f, 1.2f, 3.5f);
-        }
-
+        // the colours of a place, an enemy and an object are the game's ping colours
         private static bool OrderLook(Orders.OrderKind kind, out Color color, out Glyph glyph)
         {
-            color = new Color(0.45f, 1f, 0.55f, 1f);
+            color = OrderBeacons.PingGreen;
             glyph = Glyph.Move;
             switch (kind)
             {
                 case Orders.OrderKind.Move: return true;
-                case Orders.OrderKind.AttackMove: color = new Color(1f, 0.55f, 0.3f, 1f); glyph = Glyph.AttackMove; return true;
+                case Orders.OrderKind.AttackMove: color = new Color(1f, 0.55f, 0.25f, 1f); glyph = Glyph.AttackMove; return true;
                 case Orders.OrderKind.Retreat: color = new Color(0.5f, 0.8f, 1f, 1f); glyph = Glyph.Retreat; return true;
                 case Orders.OrderKind.Patrol: color = new Color(1f, 0.8f, 0.3f, 1f); glyph = Glyph.Patrol; return true;
-                case Orders.OrderKind.Attack: color = new Color(1f, 0.3f, 0.25f, 1f); glyph = Glyph.Attack; return true;
+                case Orders.OrderKind.Attack: color = OrderBeacons.PingRed; glyph = Glyph.Attack; return true;
                 case Orders.OrderKind.Follow: glyph = Glyph.Follow; return true;
-                case Orders.OrderKind.Interact: color = new Color(1f, 0.9f, 0.3f, 1f); glyph = Glyph.Interact; return true;
+                case Orders.OrderKind.Interact: color = OrderBeacons.PingYellow; glyph = Glyph.Interact; return true;
             }
             return false;
         }
@@ -425,8 +458,8 @@ namespace HighCommand.UI
         // the zoom in steps of two: the spacing of the line's points and pulses changes only when the zoom does
         private float ZoomStep() => Mathf.Pow(2f, Mathf.Max(0f, Mathf.Round(Mathf.Log(Mathf.Max(1f, camDistance / 45f), 2f))));
 
-        /// <summary>Draws the way from one point to a ring round another; returns its length in meters.</summary>
-        private float DrawRoute(Hero hero, int leg, Vector3 from, Vector3 to, Color color, RouteStyle style, float ringRadius)
+        /// <summary>Draws the way from one point to <paramref name="endGap"/> meters before another; returns its length in meters.</summary>
+        private float DrawRoute(Hero hero, int leg, Vector3 from, Vector3 to, Color color, RouteStyle style, float endGap)
         {
             RouteCache.Route route = routes.Get(hero, leg, from, to);
             BuildRouteWorld(route.Points, from, to);
@@ -445,9 +478,9 @@ namespace HighCommand.UI
             float alpha, width, pulse;
             switch (style)
             {
-                case RouteStyle.Preview: alpha = 0.9f; width = 7f; pulse = 1f; break;
-                case RouteStyle.Queued: alpha = 0.5f; width = 4.5f; pulse = 0f; break;
-                default: alpha = 0.85f; width = 6.5f; pulse = 0.8f; break;
+                case RouteStyle.Preview: alpha = 0.9f; width = 5f; pulse = 1f; break;
+                case RouteStyle.Queued: alpha = 0.5f; width = 3.5f; pulse = 0f; break;
+                default: alpha = 0.85f; width = 4.5f; pulse = 0.8f; break;
             }
             if (!route.Found) alpha *= 0.7f; // a way that could not be found stays straight and fainter
 
@@ -455,7 +488,7 @@ namespace HighCommand.UI
             float step = 0.6f * zoom;                       // meters between the points of the ribbon
             float period = 9f * zoom, comet = 3f * zoom;     // a pulse every 9 m, its glowing tail 3 m long
             float shift = Time.unscaledTime * 7f * zoom;     // pulses run 7 m/s towards the target
-            float stopAt = ringRadius + 0.35f;              // the ribbon ends where the arrowhead sits, inside the ring
+            float stopAt = endGap;                          // the ribbon ends where the arrowhead sits, under the mark
 
             // the ribbon is sampled from the target backwards: the points stay where they are while the heroes walk on
             runScreen.Clear();
@@ -567,13 +600,10 @@ namespace HighCommand.UI
             runWidth.Clear();
         }
 
-        // ---- the ends: an arrowhead and a ring lying on the ground ----
+        // ---- the end of a line: an arrowhead under the mark ----
 
         private readonly List<Image> arrowheads = new List<Image>(16);
         private int arrowheadsUsed;
-        private readonly List<Vector2> ringScreen = new List<Vector2>(40);
-        private readonly List<Color32> ringColor = new List<Color32>(40);
-        private readonly List<Color32> ringShade = new List<Color32>(40);
 
         private void DrawArrowhead(Camera cam, float atFromEnd, Color color, float alpha)
         {
@@ -585,29 +615,21 @@ namespace HighCommand.UI
             if (!WorldPicker.ProjectPoint(cam, p + dir.normalized * 0.5f, out Vector2 s2)) return;
             Vector2 d = s2 - s;
             if (d.sqrMagnitude < 1e-4f) return;
-            // the marker sprite points down: turned by the direction + 90 degrees it points along the way
-            Quaternion turn = Quaternion.Euler(0f, 0f, Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg + 90f);
-
-            Image shade = AcquireArrowhead();
-            shade.color = new Color(0f, 0f, 0f, 0.6f * alpha);
-            shade.rectTransform.sizeDelta = new Vector2(23f, 19f);
-            shade.rectTransform.position = new Vector3(s.x, s.y, 0f);
-            shade.rectTransform.localRotation = turn;
-
+            // the ping's chevron points down (a dark rim baked in): turned by the direction + 90 degrees it points along
             Image head = AcquireArrowhead();
             Color c = color;
             c.a = Mathf.Clamp01(alpha * 1.15f);
             head.color = c;
-            head.rectTransform.sizeDelta = new Vector2(17f, 14f);
+            head.rectTransform.sizeDelta = new Vector2(20f, 20f);
             head.rectTransform.position = new Vector3(s.x, s.y, 0f);
-            head.rectTransform.localRotation = turn;
+            head.rectTransform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg + 90f);
         }
 
         private Image AcquireArrowhead()
         {
             if (arrowheadsUsed >= arrowheads.Count)
             {
-                Image made = UiKit.NewImage("Arrowhead", layer, UiKit.Marker, Color.white);
+                Image made = UiKit.NewImage("Arrowhead", layer, GameArt.Chevron, Color.white);
                 made.rectTransform.pivot = new Vector2(0.5f, 0.5f);
                 arrowheads.Add(made);
             }
@@ -616,34 +638,6 @@ namespace HighCommand.UI
             return img;
         }
 
-        // a circle on the ground round the target (projected, so it lies flat in the view like the ground does)
-        private void DrawGroundRing(Vector3 center, float radius, Color color, RouteStyle style)
-        {
-            Camera cam = sceneCam;
-            if (!cam) return;
-            float alpha = style == RouteStyle.Queued ? 0.5f : 0.9f;
-            float width = style == RouteStyle.Queued ? 2.5f : 3.5f;
-            if (style == RouteStyle.Preview) radius *= 1f + 0.08f * Mathf.Sin(Time.unscaledTime * 5f);
-            const int sides = 36;
-            ringScreen.Clear();
-            ringColor.Clear();
-            ringShade.Clear();
-            Color c = color;
-            c.a = alpha;
-            Color shade = new Color(0f, 0f, 0f, 0.5f * alpha);
-            Vector3 lifted = center + Vector3.up * RouteLift;
-            for (int i = 0; i <= sides; i++)
-            {
-                float angle = i * (Mathf.PI * 2f / sides);
-                Vector3 p = lifted + new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
-                if (!WorldPicker.ProjectPoint(cam, p, out Vector2 s)) return;
-                ringScreen.Add(s);
-                ringColor.Add(c);
-                ringShade.Add(shade);
-            }
-            routeLines.Strip(ringScreen, ringShade, 0, ringScreen.Count, width + 4f);
-            routeLines.Strip(ringScreen, ringColor, 0, ringScreen.Count, width);
-        }
         // ---- targets off the screen: a mark at the edge with the order's picture, an arrow and the distance ----
 
         private struct EdgeTarget
@@ -804,35 +798,6 @@ namespace HighCommand.UI
             return mark;
         }
 
-        private void DrawPings()
-        {
-            float now = Time.unscaledTime;
-            var list = Feedback.Pings;
-            for (int i = list.Count - 1; i >= 0; i--)
-            {
-                var p = list[i];
-                float age = now - p.born;
-                if (age > p.life) { list.RemoveAt(i); continue; }
-
-                float t = age / p.life;
-                if (!WorldPicker.Project(p.position, p.size * (0.5f + t), out Vector2 s, out float px)) continue;
-
-                if (pingsUsed >= pings.Count)
-                    pings.Add(UiKit.NewImage("Ping", layer, UiKit.Ring, Color.white));
-                Image img = pings[pingsUsed++];
-                if (!img.enabled) img.enabled = true;
-
-                Color c = p.color;
-                c.a = (1f - t) * 0.95f;
-                img.color = c;
-                float pitch = CurrentPitch() * Mathf.Deg2Rad;
-                float inv = 1f / Mathf.Max(0.0001f, layer.lossyScale.x);
-                float w = Mathf.Max(16f, px * 2f) * inv;
-                img.rectTransform.sizeDelta = new Vector2(w, w * Mathf.Clamp(Mathf.Sin(pitch), 0.35f, 1f));
-                img.rectTransform.position = new Vector3(s.x, s.y, 0f);
-            }
-        }
-
         private readonly List<TMPro.TextMeshProUGUI> popupTexts = new List<TMPro.TextMeshProUGUI>(16);
         private int popupsUsed;
 
@@ -924,7 +889,7 @@ namespace HighCommand.UI
         }
 
         // diagnostics (hc_overlay)
-        internal static int LastBars, LastRings, LastRouteVertices;
+        internal static int LastBars, LastRings, LastRouteVertices, LastBeacons;
 
         // ---- rings -------------------------------------------------------------------------------
 
@@ -1374,8 +1339,6 @@ namespace HighCommand.UI
                 if (arrowheads[i].enabled) arrowheads[i].enabled = false;
             for (int i = edgeMarksUsed; i < edgeMarks.Count; i++)
                 if (edgeMarks[i].root.gameObject.activeSelf) edgeMarks[i].root.gameObject.SetActive(false);
-            for (int i = pingsUsed; i < pings.Count; i++)
-                if (pings[i].enabled) pings[i].enabled = false;
             for (int i = tagsUsed; i < tags.Count; i++)
                 if (tags[i].text.enabled) tags[i].text.enabled = false;
         }

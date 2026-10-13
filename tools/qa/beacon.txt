@@ -1,0 +1,79 @@
+﻿# Order marks in the look of the game's ping: a flash on the click, a beam with the order's picture while the order
+# lasts, no lines and no ring on the ground; the lines (and the queued orders' marks) only while Shift is held.
+# Screenshots beacon_*.png; hc_overlay prints the number of marks.
+@wait 4
+@log === B0 run start
+hc_start
+@scene lobby
+@wait 3
+pregame_start_run
+@run
+@wait 20
+hc_invulnerable true
+hc_cfg hunt false
+hc_gold 3000
+hc_recruit Commando
+hc_recruit Mage
+@wait 20
+hc_cam army
+hc_cam dist 45
+@wait 2
+hc_select all
+hc_mouse 520 330
+@wait 0.5
+@log === B1 a move order: the shockwave and the mark popping in
+hc_click 520 330 1
+@wait 0.15
+hc_screenshot beacon_click
+@wait 0.3
+hc_screenshot beacon_pop
+@wait 1.2
+hc_overlay
+hc_screenshot beacon_move
+@log === B2 Shift held: the line and the chevrons where a click would put the mark
+hc_mouse 1450 820 shift
+@wait 1
+hc_cursor
+hc_screenshot beacon_shift
+@log === B3 a queued order (Shift still held): the queue's mark, dimmer
+hc_click 1450 820 1 shift
+@wait 0.3
+hc_mouse 960 300 shift
+@wait 1
+hc_overlay
+hc_screenshot beacon_queue
+@log === B4 Shift let go: the lines and the queue's mark are gone, the current mark stays
+hc_mouse 960 300
+@wait 1
+hc_overlay
+hc_screenshot beacon_noshift
+@log === B5 they arrive: the marks fade out
+@wait 12
+hc_status
+hc_overlay
+hc_screenshot beacon_arrived
+@log === B6 an enemy: the attack mark hangs over it
+hc_spawn 1 LemurianMaster 25
+@wait 3
+hc_cam army
+@wait 1
+hc_click_enemy 1
+@wait 0.6
+hc_overlay
+hc_screenshot beacon_attack
+@log === B7 a chest: the mark with the game's own chest icon
+hc_kill_enemies
+hc_find kind:Chest
+@wait 2
+hc_click_found 1
+@wait 1
+hc_cam dist 60
+@wait 1
+hc_overlay
+hc_screenshot beacon_chest
+hc_input_end
+@log === END
+disconnect
+@norun
+@wait 4
+@quit

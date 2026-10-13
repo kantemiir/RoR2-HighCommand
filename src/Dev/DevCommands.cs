@@ -1006,7 +1006,8 @@ namespace HighCommand.Dev
             var cam = Client.RtsCamera.Instance;
             var sb = new StringBuilder();
             sb.AppendLine($"HighCommand overlay: routes={UI.RouteCache.LastCount} searched={UI.RouteCache.LastComputed} " +
-                          $"found={UI.RouteCache.LastFound} searchMs={UI.RouteCache.LastMs:0.00} routeVerts={UI.WorldOverlay.LastRouteVertices}");
+                          $"found={UI.RouteCache.LastFound} searchMs={UI.RouteCache.LastMs:0.00} routeVerts={UI.WorldOverlay.LastRouteVertices} " +
+                          $"beacons={UI.WorldOverlay.LastBeacons}");
             sb.AppendLine($"HighCommand overlay: bars={UI.WorldOverlay.LastBars} rings={UI.WorldOverlay.LastRings} " +
                           $"camera={(cam ? "yes" : "no")} sceneCam={(cam && cam.SceneCam ? cam.SceneCam.name : "none")} " +
                           $"focus={(cam ? cam.Focus : Vector3.zero):0.0} dist={(cam ? cam.Distance : 0f):0.0}");
@@ -1261,6 +1262,142 @@ namespace HighCommand.Dev
                 sb.AppendLine($"  [{i}] {run.name,-24} nameToken={run.nameToken,-32} userPickable={run.userPickable} type={run.GetType().Name}");
             }
             Debug.Log(sb.ToString());
+        }
+
+        [ConCommand(commandName = "hc_dump_asset", flags = HostOnly, helpText = "hc_dump_asset <addressable key> [save]: prints a prefab's hierarchy with renderers, materials and sprites; 'save' writes its textures as PNG to screenshots\\assets.")]
+        private static void CcDumpAsset(ConCommandArgs args)
+        {
+            if (args.Count < 1) throw new ConCommandException("Usage: hc_dump_asset <addressable key> [save]");
+            string key = args.GetArgString(0);
+            bool save = args.Count > 1 && args.GetArgString(1) == "save";
+            var sb = new StringBuilder($"HighCommand asset '{key}':\n");
+            var textures = new System.Collections.Generic.HashSet<Texture>();
+
+            if (key.EndsWith(".png") || key.EndsWith(".asset"))
+            {
+                Texture tex = null;
+                try { tex = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<Texture2D>(key).WaitForCompletion(); }
+                catch (System.Exception e) { sb.AppendLine("  texture load failed: " + e.Message); }
+                if (!tex)
+                {
+                    try
+                    {
+                        Sprite s = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<Sprite>(key).WaitForCompletion();
+                        if (s) tex = s.texture;
+                    }
+                    catch (System.Exception e) { sb.AppendLine("  sprite load failed: " + e.Message); }
+                }
+                if (tex) { textures.Add(tex); sb.AppendLine($"  texture {tex.name} {tex.width}x{tex.height}"); }
+            }
+            else if (key.EndsWith(".mat"))
+            {
+                Material m = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<Material>(key).WaitForCompletion();
+                DescribeMaterial(sb, m, "  ", textures);
+            }
+            else
+            {
+                GameObject go = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>(key).WaitForCompletion();
+                if (!go) sb.AppendLine("  (not found)");
+                else WalkAsset(sb, go.transform, 0, textures);
+            }
+
+            if (save)
+            {
+                string dir = System.IO.Path.Combine(Plugin.PluginDirectory, "screenshots", "assets");
+                System.IO.Directory.CreateDirectory(dir);
+                foreach (Texture t in textures)
+                {
+                    try
+                    {
+                        var rt = RenderTexture.GetTemporary(t.width, t.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+                        Graphics.Blit(t, rt);
+                        RenderTexture prev = RenderTexture.active;
+                        RenderTexture.active = rt;
+                        var copy = new Texture2D(t.width, t.height, TextureFormat.RGBA32, false);
+                        copy.ReadPixels(new Rect(0, 0, t.width, t.height), 0, 0);
+                        copy.Apply();
+                        RenderTexture.active = prev;
+                        RenderTexture.ReleaseTemporary(rt);
+                        System.IO.File.WriteAllBytes(System.IO.Path.Combine(dir, t.name + ".png"), ImageConversion.EncodeToPNG(copy));
+                        Object.Destroy(copy);
+                    }
+                    catch (System.Exception e) { sb.AppendLine($"  save {t.name} failed: {e.Message}"); }
+                }
+                sb.AppendLine($"  saved {textures.Count} textures to {dir}");
+            }
+            Debug.Log(sb.ToString());
+        }
+
+        private static void WalkAsset(StringBuilder sb, Transform t, int level, System.Collections.Generic.HashSet<Texture> textures)
+        {
+            string pad = new string(' ', level * 2);
+            sb.AppendLine($"{pad}{t.name} [{(t.gameObject.activeSelf ? "on" : "off")}] pos={t.localPosition} rot={t.localEulerAngles} scale={t.localScale} layer={LayerMask.LayerToName(t.gameObject.layer)}");
+            foreach (Component c in t.GetComponents<Component>())
+            {
+                if (!c || c is Transform) continue;
+                sb.Append($"{pad}  + {c.GetType().Name}");
+                switch (c)
+                {
+                    case SpriteRenderer sr:
+                        sb.Append($" sprite={(sr.sprite ? sr.sprite.name : "null")} color={sr.color} size={sr.size}");
+                        if (sr.sprite) textures.Add(sr.sprite.texture);
+                        break;
+                    case ParticleSystem ps:
+                    {
+                        var main = ps.main;
+                        sb.Append($" life={main.startLifetime.constant}/{main.startLifetime.constantMax} size={main.startSize.constant}/{main.startSize.constantMax} speed={main.startSpeed.constant} color={main.startColor.color} loop={main.loop} dur={main.duration} max={main.maxParticles} space={main.simulationSpace}");
+                        break;
+                    }
+                    case LineRenderer lr:
+                        sb.Append($" width={lr.startWidth}->{lr.endWidth} color={lr.startColor}->{lr.endColor} points={lr.positionCount}");
+                        break;
+                    case MeshFilter mf:
+                        sb.Append($" mesh={(mf.sharedMesh ? mf.sharedMesh.name : "null")}");
+                        break;
+                    case TMPro.TMP_Text text:
+                        sb.Append($" text='{text.text}' size={text.fontSize} color={text.color}");
+                        break;
+                    case RoR2.UI.PingIndicator pi:
+                        sb.Append($" defaultColor={pi.defaultPingColor} enemyColor={pi.enemyPingColor} interColor={pi.interactablePingColor} textBase={pi.textBaseColor} defaultDur={pi.defaultPingDuration}");
+                        break;
+                    case ObjectScaleCurve osc:
+                        sb.Append($" time={osc.timeMax} uniform={osc.useOverallCurveOnly}");
+                        break;
+                }
+                sb.AppendLine();
+                if (c is Renderer r)
+                    foreach (Material m in r.sharedMaterials) DescribeMaterial(sb, m, pad + "    ", textures);
+            }
+            for (int i = 0; i < t.childCount; i++) WalkAsset(sb, t.GetChild(i), level + 1, textures);
+        }
+
+        private static void DescribeMaterial(StringBuilder sb, Material m, string pad, System.Collections.Generic.HashSet<Texture> textures)
+        {
+            if (!m) { sb.AppendLine(pad + "material null"); return; }
+            sb.Append($"{pad}material {m.name} shader={(m.shader ? m.shader.name : "null")} queue={m.renderQueue}");
+            Shader s = m.shader;
+            if (s)
+            {
+                for (int i = 0; i < s.GetPropertyCount(); i++)
+                {
+                    string n = s.GetPropertyName(i);
+                    switch (s.GetPropertyType(i))
+                    {
+                        case UnityEngine.Rendering.ShaderPropertyType.Texture:
+                            Texture tex = m.GetTexture(n);
+                            if (tex) { sb.Append($" {n}={tex.name}"); textures.Add(tex); }
+                            break;
+                        case UnityEngine.Rendering.ShaderPropertyType.Color:
+                            sb.Append($" {n}={m.GetColor(n)}");
+                            break;
+                        case UnityEngine.Rendering.ShaderPropertyType.Float:
+                        case UnityEngine.Rendering.ShaderPropertyType.Range:
+                            sb.Append($" {n}={m.GetFloat(n):0.##}");
+                            break;
+                    }
+                }
+            }
+            sb.AppendLine();
         }
     }
 }
