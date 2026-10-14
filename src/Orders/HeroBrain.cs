@@ -835,10 +835,7 @@ namespace HighCommand.Orders
                 return;
             }
             bool attacking = ai && ai.bodyLastSkillActivation.activationTime.timeSince < AttackingGrace;
-            // seen and within the hero's reach: a skill on cooldown is no reason to give the target up
-            bool seen = ai && ai.currentEnemy.gameObject == Enemy.gameObject && ai.currentEnemy.hasLoS;
-            bool inReach = seen && Perception.DriverDistance(self, Enemy) <= (Melee ? MeleeHitReach : AttackRange);
-            if (attacking || inReach || distance < watchBest - ProgressMeters)
+            if (attacking || distance < watchBest - ProgressMeters || InReachAndSeen(self))
             {
                 watchBest = Mathf.Min(watchBest, distance);
                 watchSince = now;
@@ -854,6 +851,15 @@ namespace HighCommand.Orders
             watchTarget = null;
             Stand("target out of reach");
             thinkTimer = 0f;
+        }
+
+        // Seen (our own ray: the AI's cached flag lags behind) and within the hero's reach: a skill on cooldown is no
+        // reason to give the target up.
+        private bool InReachAndSeen(CharacterBody self)
+        {
+            if (Perception.DriverDistance(self, Enemy) > (Melee ? MeleeHitReach : AttackRange)) return false;
+            Vector3 eye = self.inputBank ? self.inputBank.aimOrigin : self.corePosition;
+            return Perception.HasLineOfSight(eye, Enemy.corePosition);
         }
 
         private void PushEnemyToAi()
