@@ -47,6 +47,9 @@ namespace HighCommand.Orders
         private const float AttackingGrace = 1.2f;       // a skill used this recently: the hero is busy fighting
         private const float ProgressMeters = 1.5f;       // getting this much closer to the target is progress
         private const float UnreachableMemory = 8f;      // seconds a target given up is left alone
+        private const float MeleeHitReach = 6f;          // the survivors' melee drivers strike within this driver distance
+        private const float BigTargetPatience = 2f;      // a boss is chased this many times longer before it is given up
+        private const float SelfDefenseRadius = 25f;     // a hero away from its post fights what is this close to it
         private const int FocusStrikesToGiveUp = 3;      // an attack order ends after the target was this often out of reach
         private const float LostTargetSeconds = 3f;      // a cloaked focus target is waited for this long
         private const float DefaultAttackRange = 30f;    // survivors whose drivers say "any distance"
@@ -504,6 +507,15 @@ namespace HighCommand.Orders
             {
                 CharacterBody enemy = Pick(self, Search(pos, acquire, tether, AiTuning.AssistRange.Value));
                 if (enemy) { Fight(enemy, tether, standStill: false, mobility: true, "idle: fighting"); return; }
+
+                // far from its post (knocked off a ledge, back from a long chase): monsters right here are fought, not
+                // walked past on the way home
+                if (!zone && !tether.Contains(pos))
+                {
+                    var local = new Tether(pos, SelfDefenseRadius);
+                    enemy = Pick(self, Search(pos, SelfDefenseRadius, local));
+                    if (enemy) { Fight(enemy, local, standStill: false, mobility: true, "idle: defending itself"); return; }
+                }
             }
 
             bool calm = !zone && EnemiesNear == 0 && self.outOfDanger;
@@ -823,13 +835,18 @@ namespace HighCommand.Orders
                 return;
             }
             bool attacking = ai && ai.bodyLastSkillActivation.activationTime.timeSince < AttackingGrace;
-            if (attacking || distance < watchBest - ProgressMeters)
+            // seen and within the hero's reach: a skill on cooldown is no reason to give the target up
+            bool seen = ai && ai.currentEnemy.gameObject == Enemy.gameObject && ai.currentEnemy.hasLoS;
+            bool inReach = seen && Perception.DriverDistance(self, Enemy) <= (Melee ? MeleeHitReach : AttackRange);
+            if (attacking || inReach || distance < watchBest - ProgressMeters)
             {
                 watchBest = Mathf.Min(watchBest, distance);
                 watchSince = now;
                 return;
             }
-            if (now - watchSince < AiTuning.UnreachableSeconds.Value) return;
+            // a boss is worth a longer walk round than a beetle
+            float patience = AiTuning.UnreachableSeconds.Value * (EnemyTraits.IsBig(Enemy) ? BigTargetPatience : 1f);
+            if (now - watchSince < patience) return;
 
             picker.MarkUnreachable(Enemy, UnreachableMemory);
             if (Current != null && Current.Kind == OrderKind.Attack) Current.unreachableStrikes++;

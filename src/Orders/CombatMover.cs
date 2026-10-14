@@ -86,14 +86,16 @@ namespace HighCommand.Orders
             }
             else
             {
+                // measured as the drivers do: from the aim to the target's centre, less the radii
                 float range = brain.FightRange;
-                if (!hasSight || distance > range)
+                float reach = Perception.DriverDistance(self, enemy);
+                if (!hasSight || reach > range)
                 {
                     plan.Point = direct ? enemyFoot : pathNext;
                     plan.FollowsPath = !direct;
                     plan.Approaching = true;
                 }
-                else if (distance < range * KiteShare) plan.Point = foot - dir * BackOffStep + side * (strafeSign * BackOffSidestep);
+                else if (reach < range * KiteShare) plan.Point = foot - dir * BackOffStep + side * (strafeSign * BackOffSidestep);
                 else plan.Point = foot + side * (strafeSign * StrafeStep);
 
                 if (Time.time >= strafeFlipAt)

@@ -24,6 +24,11 @@ namespace HighCommand.Orders
         private const float ArrivedSlack = 1.5f;      // this close to its goal a hero is not "stuck", it is there
         private const float SidestepLength = 4f;
         private const float StopDistance = 0.75f;     // a fight's walking point this close: stand
+        private const float MeleeFallbackReach = 5f;  // a melee hero's primary hits within this driver distance
+        private const int FallbackPulseFrames = 8;    // the fallback primary is held 6 of every 8 frames: charged shots
+        private const int FallbackHeldFrames = 6;     // (Engineer's grenades, Captain's shotgun) are released and fire
+        private const float DirectGoal = 12f;         // a goal this close, seen and on this level is walked to straight
+        private const float DirectGoalClimb = 2.5f;
         private const float SprintToFarTarget = 10f;  // no skill driver: run to a target farther than this
         private const int EscapeFrames = 3;
         private const float CastAimSeconds = 0.2f;
@@ -54,6 +59,7 @@ namespace HighCommand.Orders
         private bool freshDriver;
         private bool sprintInFight;
         private bool pathJumps;      // the hero follows the game's path now: the jumps it plans may be made
+        private bool fallbackFire;   // no driver fits, but the enemy is seen and in reach: the primary is pressed anyway
 
         private float castPressTime = -1f;
         private int castFrames;
@@ -187,6 +193,7 @@ namespace HighCommand.Orders
             aimConfirmationNeeded = false;
             sprintInFight = false;
             pathJumps = false;
+            fallbackFire = false;
             if (!body || !bodyInputBank) return;
 
             gate.Track(bodySkillLocator);
@@ -225,17 +232,22 @@ namespace HighCommand.Orders
             bool straight = !fleeing && !output.nextPosition.HasValue && !output.targetReachable;
             if (straight) next = goal;
 
+            // A goal close by, in sight and on this level is walked to straight: the path ends at the node nearest to
+            // the goal, which may lie beside it (a hold spot on a rock, a slot by a wall) and lead the hero away.
             Vector3 flat = goal - footPosition;
             flat.y = 0f;
+            bool near = flat.sqrMagnitude < DirectGoal * DirectGoal && Mathf.Abs(goal.y - footPosition.y) < DirectGoalClimb
+                        && Perception.HasLineOfSight(footPosition + Vector3.up, goal + Vector3.up);
+            if (near) next = goal;
             Vector3? sidestep = stuck.Update(footPosition, goal, flat.sqrMagnitude > ArrivedSlack * ArrivedSlack, ai, body, characterMaster.name);
             brain.Stuck = stuck.Stuck;
             if (sidestep.HasValue) next = footPosition + sidestep.Value * SidestepLength;
 
             ai.localNavigator.targetPosition = next + (bodyTransform.position - footPosition);
-            ai.localNavigator.allowWalkOffCliff = !fleeing && !straight && !sidestep.HasValue;
+            ai.localNavigator.allowWalkOffCliff = !fleeing && !straight && !near && !sidestep.HasValue;
             ai.localNavigator.Update(dt);
             bodyInputs.moveVector = ai.localNavigator.moveVector;
-            pathJumps = !sidestep.HasValue;
+            pathJumps = !sidestep.HasValue && !near && !straight;
         }
 
         // ---- Fight: the game's skill drivers, our walking -----------------------------------------------------------------
@@ -276,6 +288,7 @@ namespace HighCommand.Orders
             bool sight = tracked ? current.hasLoS : Perception.HasLineOfSight(bodyInputBank.aimOrigin, enemy.corePosition);
 
             bool presses = dominantDriver && driverMeetsConditions && DriverAllowed(dominantDriver);
+            fallbackFire = !presses && WantsFallbackFire(enemy);
             BroadNavigationSystem.AgentOutput output = ai.broadNavigationAgent.output;
             CombatMover.Plan plan = mover.Decide(brain, body, footPosition, enemy, sight, output, dominantDriver, presses);
             if (plan.Stand) return;
@@ -296,6 +309,17 @@ namespace HighCommand.Orders
             sprintInFight = plan.Approaching && (dominantDriver
                 ? dominantDriver.shouldSprint
                 : (enemy.footPosition - footPosition).sqrMagnitude > SprintToFarTarget * SprintToFarTarget);
+        }
+
+        // The survivors' drivers leave gaps: Commando's gun is allowed only from 8 to 19 m (closer, the Umbra is meant to
+        // back off - a walking-only rule we do not take), a target that came into sight after the last evaluation waits for
+        // the next one. A seen enemy within the primary's reach with no rule pressing anything gets the primary anyway.
+        private bool WantsFallbackFire(CharacterBody enemy)
+        {
+            if (!brain.AutoSlot[0] || !gate.Allows(brain, 0, null, body)) return false;
+            if (dominantDriver && dominantDriver.movementType == AISkillDriver.MovementType.Stop && driverMeetsConditions) return false; // a channel
+            float reach = brain.Melee ? MeleeFallbackReach : brain.AttackRange;
+            return Perception.DriverDistance(body, enemy) <= reach && Perception.HasLineOfSight(bodyInputBank.aimOrigin, enemy.corePosition);
         }
 
         // line of sight is tested right now, not taken from the cached value
@@ -340,7 +364,7 @@ namespace HighCommand.Orders
                 case BrainMode.Fight: GenerateFightInputs(previous); break;
             }
             if ((mode == BrainMode.Fight || mode == BrainMode.Go) && body && bodyInputBank)
-                equipment.Apply(brain, body, bodyInputBank.aimOrigin, previous, ref bodyInputs);
+                equipment.Apply(brain, body, bodyInputBank.aimOrigin, bodyInputBank.aimDirection, previous, ref bodyInputs);
 
             // The game's path jumps (and its "jump when frustrated") take over the move vector towards the path's next
             // point: right while the hero walks that path, wrong while it strafes, stands on a hold spot or goes straight
@@ -433,6 +457,14 @@ namespace HighCommand.Orders
                 // no rule fits this moment: keep facing the enemy, ready for the next one
                 Vector3 direction = brain.Enemy.corePosition - bodyInputBank.aimOrigin;
                 if (direction.sqrMagnitude > 0.01f) bodyInputs.desiredAimDirection = direction.normalized;
+            }
+
+            if (fallbackFire && !press && brain && brain.Enemy)
+            {
+                Vector3 direction = brain.Enemy.corePosition - bodyInputBank.aimOrigin;
+                if (direction.sqrMagnitude > 0.01f) bodyInputs.desiredAimDirection = direction.normalized;
+                bodyInputs.pressSkill1 = Time.frameCount % FallbackPulseFrames < FallbackHeldFrames;
+                bodyInputs.pressSprint = false; // most survivors cannot shoot while sprinting
             }
         }
 

@@ -15,45 +15,59 @@ namespace HighCommand.Orders
     {
         private const float CombatRange = 40f;
         private const float HurtShare = 0.5f;
-        private const float AimSeconds = 0.25f;   // the aim swings round before the press (missiles, the Preon go where it looks)
+        private const float AimTolerance = 8f;    // degrees: missiles, the Preon, the Capacitor go where the hero looks
+        private const float MaxAimSeconds = 1f;   // a target the aim cannot follow (it moves too fast) is pressed at anyway
+        private const float RetryDelay = 2f;      // a press that did nothing (no target in the cone) is not repeated at once
 
-        private float aimUntil = -1f;
+        private float aimingSince = -1f;
+        private float retryAt;
+        private int stockBefore = -1;
 
         /// <summary>
-        /// Called with the inputs being built: when a listed piece fits the moment, aims at the enemy for a moment and
-        /// presses the button once. True while it is aiming or pressing (the caller keeps that aim).
+        /// Called with the inputs being built: when a listed piece fits the moment, aims at the enemy until the aim is
+        /// on it and presses the button once. True while it is aiming or pressing (the caller keeps that aim).
         /// </summary>
-        internal bool Apply(HeroBrain brain, CharacterBody self, Vector3 aimOrigin, in BaseAI.BodyInputs previous, ref BaseAI.BodyInputs inputs)
+        internal bool Apply(HeroBrain brain, CharacterBody self, Vector3 aimOrigin, Vector3 currentAim, in BaseAI.BodyInputs previous,
+            ref BaseAI.BodyInputs inputs)
         {
-            if (!Wanted(brain, self, out CharacterBody target))
+            float now = Time.time;
+            if (now < retryAt || !Wanted(brain, self, out CharacterBody target, out EquipmentSlot slot))
             {
-                aimUntil = -1f;
+                aimingSince = -1f;
                 return false;
+            }
+
+            if (aimingSince < 0f)
+            {
+                aimingSince = now;
+                stockBefore = slot.stock;
             }
             if (target)
             {
                 Vector3 direction = target.corePosition - aimOrigin;
-                if (direction.sqrMagnitude > 0.01f) inputs.desiredAimDirection = direction.normalized;
+                if (direction.sqrMagnitude > 0.01f)
+                {
+                    inputs.desiredAimDirection = direction.normalized;
+                    bool onTarget = Vector3.Angle(currentAim, direction) <= AimTolerance;
+                    if (!onTarget && now - aimingSince < MaxAimSeconds) return true;
+                }
             }
-            if (aimUntil < 0f) aimUntil = Time.time + (target ? AimSeconds : 0f);
-            if (Time.time < aimUntil) return true;
 
             inputs.pressActivateEquipment = !previous.pressActivateEquipment;
-            if (inputs.pressActivateEquipment)
-            {
-                aimUntil = -1f;
-                if (Settings.VerboseLog.Value) Plugin.Log.LogInfo($"{brain.Hero}: uses its equipment {EquipmentName(self)}");
-            }
+            if (!inputs.pressActivateEquipment) return true;
+            aimingSince = -1f;
+            retryAt = now + RetryDelay;
+            if (Settings.VerboseLog.Value) Plugin.Log.LogInfo($"{brain.Hero}: uses its equipment {EquipmentName(slot)} (stock {stockBefore})");
             return true;
         }
 
-        private static bool Wanted(HeroBrain brain, CharacterBody self, out CharacterBody target)
+        private bool Wanted(HeroBrain brain, CharacterBody self, out CharacterBody target, out EquipmentSlot slot)
         {
             target = null;
+            slot = self ? self.equipmentSlot : null;
             if (!AiTuning.AutoEquipment.Value || brain == null || !brain.AutoSlot[4] || brain.Profile.RuleFor(4) == HeroProfile.RuleNever) return false;
-            EquipmentSlot slot = self ? self.equipmentSlot : null;
             if (!slot || slot.stock <= 0) return false;
-            string name = EquipmentName(self);
+            string name = EquipmentName(slot);
             if (name == null) return false;
 
             CharacterBody enemy = brain.Mode == BrainMode.Fight ? brain.Enemy : null;
@@ -67,11 +81,21 @@ namespace HighCommand.Orders
             return AiTuning.UseInCombat(name) || (EnemyTraits.IsBig(enemy) && AiTuning.UseVsBoss(name));
         }
 
-        private static string EquipmentName(CharacterBody self)
+        private EquipmentIndex namedIndex = EquipmentIndex.None;
+        private string namedName;
+
+        // Object.name builds a new string on every call: the name of the last piece asked for is kept
+        private string EquipmentName(EquipmentSlot slot)
         {
-            EquipmentSlot slot = self ? self.equipmentSlot : null;
-            EquipmentDef def = slot ? EquipmentCatalog.GetEquipmentDef(slot.equipmentIndex) : null;
-            return def ? def.name : null;
+            if (!slot) return null;
+            EquipmentIndex index = slot.equipmentIndex;
+            if (index != namedIndex)
+            {
+                EquipmentDef def = EquipmentCatalog.GetEquipmentDef(index);
+                namedName = def ? def.name : null;
+                namedIndex = index;
+            }
+            return namedName;
         }
     }
 }

@@ -107,6 +107,18 @@ namespace HighCommand.Orders
             return null;
         }
 
+        /// <summary>
+        /// The distance the game's skill drivers measure (BaseAI): from the hero's aim origin to the target's centre,
+        /// less both bodies' radii. For a big monster it is meters more than the distance between the feet, and a ranged
+        /// hero that keeps its range by the feet stands out of its own drivers' reach.
+        /// </summary>
+        internal static float DriverDistance(CharacterBody self, CharacterBody target)
+        {
+            Vector3 eye = self.inputBank ? self.inputBank.aimOrigin : self.corePosition;
+            float sqr = (target.corePosition - eye).sqrMagnitude - target.radius * target.radius - self.radius * self.radius;
+            return sqr > 0f ? Mathf.Sqrt(sqr) : 0f;
+        }
+
         internal static bool HasLineOfSight(Vector3 from, Vector3 to)
         {
             Vector3 delta = to - from;
