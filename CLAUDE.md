@@ -89,8 +89,10 @@ BepInEx-плагин `kantemiir.HighCommand`: отдельный RTS-режим 
   `RunPrefabBuilder` (клон ClassicRun), `LobbyRules`/`LobbyPatches`/`MenuButton`.
 * `Army\` — сервер: `ArmyManager` (найм через MasterSummon, подмена ИИ), `ArmyService` (найм/воскрешение/предметы/телепорт),
   `Economy`, `LootService`, `ItemDistributor`, `CommanderAbilities`, `RunStats`.
-* `Orders\` — логика приказов и ИИ без знания UI: `HeroBrain` (решения, тик 0.12 с), `HeroAIState` (ввод тела, 0.1 с),
-  `Perception`, `Formation`, `HeroProfile` (+ `package\profiles\hero_profiles.json`), `Order`/`OrderService`.
+* `Orders\` — логика приказов и ИИ без знания UI (устройство — `docs\dev\AI.md`): `HeroBrain` (решения и очередь,
+  тик `AI/ThinkInterval`), `HeroAIState` (ввод тела, 0.1 с), части: `TargetPicker`, `SurvivalInstinct`, `CombatMover`,
+  `SkillGate`, `StuckRecovery`, `EquipmentUser`, `LootErrands`, `EnemySeeker`; `Perception`, `EnemyTraits`, `Formation`,
+  `HeroProfile` (+ `package\profiles\hero_profiles.json`, формат 2), `Order`/`OrderService`.
 * `Client\` — камера (`RtsCamera`), единый шлюз ввода (`ClientInput`), выделение, приказы с ввода, оповещения.
 * `UI\` — панели uGUI, строятся кодом. `Net\CommandChannel` — клиент→сервер (заморожено, не проверено).
 * `Core\` — настройки, локализация (ru/en без R2API), MiniJson. `Dev\` — консольные команды, AutoExec, Perf.
@@ -122,6 +124,20 @@ Opus дороже. По каждой задаче заранее решать и
 * Для каждой задачи Sonnet — самодостаточный промт: что сделать, в каких файлах, как проверить, чего не трогать.
 * В конце каждого ответа с работой — блок «Для Sonnet» (или «нет»).
 * Результат Sonnet проверять критично (diff + сборка + прогон), прежде чем закрывать задачу.
+
+## ИИ героев (переписан 2026-10-14, подробно — `docs\dev\AI.md`)
+* Мозг только решает и публикует намерение (Mode/Goal/Enemy/Tether/StandStill/MobilitySkills); навыки выбирают
+  ванильные AISkillDriver, но запрещённые `SkillGate` драйверы заменяются следующим разрешённым
+  (`BaseAI.EvaluateSingleSkillDriver`), драйверы «только ходьба» не берутся; ходьбу в бою делает `CombatMover`.
+* Приоритеты: неотменяемые приказы (движение, отступление, удержание, использование, каст) > бегство раненого (только
+  под реальной угрозой) > текущий приказ > стойка без приказа. Удержание = круг `AI/HoldRadius`, без навыков-перемещений.
+* Не возвращать: прыжки ванильного пути (`ModifyInputsForJumpIfNeccessary`) вне следования по пути (выдёргивали из
+  круга и с обрывов); места строя без проверки уровня (`Formation.SlotOnLevel`); дальность дальников по ступням (мерить
+  как драйверы: `Perception.DriverDistance`); «недоступна» для видимой цели в досягаемости.
+* Настройки — секция `[AI]` (`Core\AiTuning.cs`), на героя — профили (`mobility` = слоты/имена навыков-перемещений).
+* Проверка: `qa-run.ps1 aibase` (сравнение на Titanic Plains, `hc_ai`), `aiedge` (бегство, снаряжение, телепорт, толпа,
+  смерть, новый этап), трассы `aitrace`/`aimelee`/`aiboss` (`hc_ai trace on`). Команды: `hc_order`, `hc_spawn_at`,
+  `hc_hurt`, `hc_equip`, `hc_warp tp`. Замеры разнятся от прогона к прогону (спавн случайный) — сравнивать на одной карте.
 
 ## Лут с карты (с 2026-10-13)
 * Предметы — из сундуков/святынь/дронов на карте (ванильная расстановка), платит общая казна: префиксы на

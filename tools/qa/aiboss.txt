@@ -1,0 +1,37 @@
+# AI trace against a boss with guards on Titanic Plains (diagnosis): why heroes stand idle near a boss.
+@wait 4
+@log === B0 run start
+hc_cfg startingheroes 1
+hc_start
+@scene lobby
+@wait 3
+pregame_start_run
+@run
+@wait 22
+hc_next_stage golemplains
+@wait 20
+hc_cfg ignoreunlocks true
+hc_gold 200000
+hc_recruit Merc
+hc_recruit Huntress
+hc_recruit Commando
+@wait 6
+hc_kill_enemies
+hc_cfg autobarrels false
+hc_cfg autochests false
+hc_invulnerable true
+hc_cfg verbose true
+@log === B1 beetle queen with guards
+hc_ai reset
+hc_spawn 1 BeetleQueenMaster 30
+hc_spawn 2 BeetleGuardMaster 25
+hc_ai trace on
+@wait 25
+hc_ai trace off
+hc_ai
+@log === END
+hc_cfg verbose false
+disconnect
+@norun
+@wait 4
+@quit

@@ -1,0 +1,33 @@
+# Diagnosis: why heroes see their target as "no line of sight" on open ground (trace with three LOS tests).
+@wait 4
+@log === L0 run start
+hc_cfg startingheroes 1
+hc_start
+@scene lobby
+@wait 3
+pregame_start_run
+@run
+@wait 22
+hc_next_stage golemplains
+@wait 20
+hc_cfg ignoreunlocks true
+hc_gold 200000
+hc_recruit Commando
+hc_recruit Huntress
+@wait 6
+hc_kill_enemies
+hc_cfg autobarrels false
+hc_cfg autochests false
+hc_invulnerable true
+@log === L1 lemurians
+hc_ai reset
+hc_spawn 6 LemurianMaster 25
+hc_ai trace on
+@wait 15
+hc_ai trace off
+hc_ai
+@log === END
+disconnect
+@norun
+@wait 4
+@quit

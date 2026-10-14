@@ -140,6 +140,71 @@ namespace HighCommand.Dev
             Debug.Log($"HighCommand: spawned {made}/{count} x {args.GetArgString(1)} at {at:0}.");
         }
 
+        [ConCommand(commandName = "hc_hurt", flags = HostOnly,
+            helpText = "hc_hurt <fraction 0..1> [heroId]: sets the health of every hero (or one) to that share of its maximum (tests of running away).")]
+        private static void CcHurt(ConCommandArgs args)
+        {
+            HighCommandRun run = HighCommandRun.Instance;
+            if (!NetworkServer.active || run == null) throw new ConCommandException("Not in a High Command run.");
+            float share = Mathf.Clamp(args.GetArgFloat(0), 0.01f, 1f);
+            int only = args.Count > 1 ? args.GetArgInt(1) : -1;
+            int n = 0;
+            foreach (Hero h in run.Army.Heroes)
+            {
+                HealthComponent hc = h.Health;
+                if (!hc || !hc.alive || (only >= 0 && h.Id != only)) continue;
+                hc.Networkhealth = hc.fullHealth * share;
+                hc.Networkshield = 0f;
+                hc.Networkbarrier = 0f;
+                n++;
+            }
+            Debug.Log($"HighCommand: {n} hero(es) at {share:P0} health.");
+        }
+
+        [ConCommand(commandName = "hc_equip", flags = HostOnly,
+            helpText = "hc_equip <EquipmentName> [heroId]: puts a piece of equipment into the active slot of every hero (or one), for tests.")]
+        private static void CcEquip(ConCommandArgs args)
+        {
+            HighCommandRun run = HighCommandRun.Instance;
+            if (!NetworkServer.active || run == null) throw new ConCommandException("Not in a High Command run.");
+            EquipmentIndex index = EquipmentCatalog.FindEquipmentIndex(args.GetArgString(0));
+            if (index == EquipmentIndex.None) throw new ConCommandException("Unknown equipment: " + args.GetArgString(0));
+            int only = args.Count > 1 ? args.GetArgInt(1) : -1;
+            int n = 0;
+            foreach (Hero h in run.Army.Heroes)
+            {
+                Inventory inv = h.Master ? h.Master.inventory : null;
+                if (!inv || (only >= 0 && h.Id != only)) continue;
+                EquipmentLocation slot = inv.activeEquipmentLocation;
+                inv.SetEquipmentIndex(index, in slot);
+                n++;
+            }
+            Debug.Log($"HighCommand: {args.GetArgString(0)} given to {n} hero(es).");
+        }
+
+        [ConCommand(commandName = "hc_warp", flags = HostOnly,
+            helpText = "hc_warp tp: moves the whole army next to the teleporter (tests of the teleporter event without the walk).")]
+        private static void CcWarp(ConCommandArgs args)
+        {
+            HighCommandRun run = HighCommandRun.Instance;
+            if (!NetworkServer.active || run == null) throw new ConCommandException("Not in a High Command run.");
+            TeleporterInteraction tp = TeleporterInteraction.instance;
+            if (!tp) throw new ConCommandException("No teleporter on this stage.");
+            int n = 0;
+            foreach (Hero h in run.Army.Heroes)
+            {
+                CharacterBody body = h.Body;
+                if (!body || !h.IsAlive) continue;
+                Vector3 at = Formation.GroundNear(tp.transform.position, 6f, 12f, run.Army.Heroes);
+                TeleportHelper.TeleportBody(body, at, false);
+                if (h.Brain) h.Brain.ClearOrders(setAnchorHere: false);
+                if (h.Brain) h.Brain.Anchor = at;
+                n++;
+            }
+            run.RallyPoint = Formation.SnapToGround(tp.transform.position);
+            Debug.Log($"HighCommand: {n} hero(es) moved to the teleporter at {tp.transform.position:0}.");
+        }
+
         private static Vector3 ArmyCenter(HighCommandRun run, List<int> ids)
         {
             Vector3 sum = Vector3.zero;

@@ -8,6 +8,8 @@ hc_start
 pregame_start_run
 @run
 @wait 22
+hc_next_stage golemplains
+@wait 20
 hc_cfg ignoreunlocks true
 hc_gold 200000
 hc_recruit Merc

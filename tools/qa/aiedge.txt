@@ -1,0 +1,92 @@
+# AI edge cases: running away when hurt, equipment, the teleporter event with its boss, a big crowd (cost),
+# death and revival in a fight, a new stage. Verbose log on: the flee / equipment / unstuck lines show up.
+@wait 4
+@log === E0 run start
+hc_cfg startingheroes 1
+hc_start
+@scene lobby
+@wait 3
+pregame_start_run
+@run
+@wait 22
+hc_next_stage golemplains
+@wait 20
+hc_cfg ignoreunlocks true
+hc_gold 200000
+hc_recruit Merc
+hc_recruit Huntress
+hc_recruit Commando
+@wait 6
+hc_kill_enemies
+hc_cfg autobarrels false
+hc_cfg autochests false
+hc_cfg verbose true
+@log === E1 hurt heroes under attack: they run, then come back into the fight
+hc_ai reset
+hc_hurt 0.15
+hc_spawn 6 LemurianMaster 20
+@wait 15
+hc_ai
+hc_status
+@log === E2 equipment: a Royal Capacitor in a fight, a Foreign Fruit when hurt
+hc_kill_enemies
+hc_revive
+hc_revive
+hc_revive
+hc_revive
+@wait 3
+hc_invulnerable true
+hc_equip Lightning
+hc_ai reset
+hc_spawn 4 LemurianMaster 25
+@wait 12
+hc_ai
+hc_equip Fruit
+hc_hurt 0.3
+hc_spawn 3 LemurianMaster 25
+@wait 8
+hc_ai
+@log === E3 teleporter: activated, the army stays in the zone and fights the boss
+hc_kill_enemies
+hc_warp tp
+@wait 3
+hc_ai reset
+hc_tp
+@wait 30
+hc_flow
+hc_ai
+hc_status
+@log === E4 crowd: 40 lemurians and 10 beetles, the cost of the AI
+hc_perf
+hc_spawn 40 LemurianMaster 40
+hc_spawn 10 BeetleMaster 30
+@wait 10
+hc_perf
+hc_ai reset
+@wait 10
+hc_ai
+hc_perf
+@log === E5 death and revival in a fight
+hc_invulnerable false
+hc_kill_heroes 2
+@wait 3
+hc_revive 2
+@wait 8
+hc_status
+@log === E6 a new stage
+hc_kill_enemies
+hc_order move 30 0
+hc_next_stage
+@wait 25
+hc_status
+hc_ai reset
+hc_spawn 6 LemurianMaster 30
+@wait 12
+hc_ai
+hc_status
+@log === END
+hc_cfg verbose false
+disconnect
+@norun
+@wait 4
+@quit

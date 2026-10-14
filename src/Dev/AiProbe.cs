@@ -29,10 +29,10 @@ namespace HighCommand.Dev
 
         private sealed class Stats
         {
-            internal float alive, idle, fight, go, cast, flee, combat, passive, standing, stalled, holdDrift;
+            internal float alive, idle, fight, go, cast, flee, combat, passive, standing, stalled, holdDrift, zone, inZone;
             internal readonly int[] skills = new int[4];
             internal float dealt, taken;
-            internal int deaths, killsAtStart, stuckEpisodes, done, dropped, reacted;
+            internal int deaths, killsAtStart, stuckEpisodes, done, dropped, reacted, equipment;
             internal float reactSum, speedSum;
             internal float lastSkill = -100f;
             internal bool wasAlive, wasStuck, holdSettled;
@@ -62,12 +62,14 @@ namespace HighCommand.Dev
         {
             Instance = this;
             GlobalEventManager.onServerDamageDealt += OnDamage;
+            EquipmentSlot.onServerEquipmentActivated += OnEquipment;
             ResetStats();
         }
 
         private void OnDisable()
         {
             GlobalEventManager.onServerDamageDealt -= OnDamage;
+            EquipmentSlot.onServerEquipmentActivated -= OnEquipment;
             foreach (Stats s in stats.Values) Unhook(s);
             stats.Clear();
             if (Instance == this) Instance = null;
@@ -106,6 +108,12 @@ namespace HighCommand.Dev
             if (attacker != null) For(attacker).dealt += report.damageDealt;
             Hero victim = HeroMarker.Of(report.victimMaster);
             if (victim != null) For(victim).taken += report.damageDealt;
+        }
+
+        private void OnEquipment(EquipmentSlot slot, EquipmentIndex index)
+        {
+            Hero hero = slot && slot.characterBody ? HeroMarker.Of(slot.characterBody) : null;
+            if (hero != null) For(hero).equipment++;
         }
 
         private void FixedUpdate()
@@ -167,6 +175,14 @@ namespace HighCommand.Dev
             if (brain.Mode == BrainMode.Go && velocity.sqrMagnitude < 1f) s.stalled += dt;
             if (brain.Stuck && !s.wasStuck) s.stuckEpisodes++;
             s.wasStuck = brain.Stuck;
+
+            if (brain.ZoneRadius > 0f)
+            {
+                s.zone += dt;
+                Vector3 fromZone = pos - brain.ZoneCenter;
+                fromZone.y = 0f;
+                if (fromZone.magnitude <= brain.ZoneRadius) s.inZone += dt;
+            }
 
             Order order = brain.Current;
             if (order != null && order.Kind == OrderKind.Hold)
@@ -291,7 +307,15 @@ namespace HighCommand.Dev
             HealthComponent hc = body.healthComponent;
             Tether t = brain.Tether;
             string tether = t.Active ? $" tether={t.Radius:0}@{t.Distance(body.footPosition):0}" : "";
-            string los = ai && ai.currentEnemy.gameObject ? (ai.currentEnemy.hasLoS ? " los" : " nolos") : "";
+            // line of sight three ways: the AI's cached flag, its test right now, our own ray (they should agree)
+            string los = "";
+            if (ai && ai.currentEnemy.gameObject)
+            {
+                bool now = ai.currentEnemy.TestLOSNow();
+                bool ours = enemy && Perception.HasLineOfSight(body.inputBank.aimOrigin, enemy.corePosition);
+                los = $" los={(ai.currentEnemy.hasLoS ? 1 : 0)}{(now ? 1 : 0)}{(ours ? 1 : 0)}" +
+                      $"{(ai.currentEnemy.gameObject == (enemy ? enemy.gameObject : null) ? "" : " aiOther")}";
+            }
             float skillAgo = ai ? ai.bodyLastSkillActivation.activationTime.timeSince : -1f;
             string dy = enemy ? $" dy={enemy.footPosition.y - body.footPosition.y:0}" : "";
             return $"{hero} {brain.Mode} '{brain.DebugState}' order={(brain.Current != null ? brain.Current.ToString() : "-")} " +
@@ -316,6 +340,8 @@ namespace HighCommand.Dev
                 sb.Append($" | combat {s.combat:0}s passive {s.passive:0.0}s ({(s.combat > 0f ? s.passive / s.combat : 0f):P0}) standing {s.standing:0.0}s stalled {s.stalled:0.0}s stuck {s.stuckEpisodes}");
                 sb.Append($" | skills [{s.skills[0]},{s.skills[1]},{s.skills[2]},{s.skills[3]}] dmg {s.dealt:0} ({s.dealt / a:0}/s) taken {s.taken:0} deaths {s.deaths} kills {hero.Kills - s.killsAtStart}");
                 sb.Append($" | orders done {s.done} dropped {s.dropped} react {(s.reacted > 0 ? s.reactSum / s.reacted : 0f):0.00}s speed {(s.done > 0 ? s.speedSum / s.done : 0f):0.0}m/s holdDrift {s.holdDrift:0.0}m");
+                if (s.zone > 0f) sb.Append($" | in zone {s.inZone / s.zone:P0} of {s.zone:0}s");
+                if (s.equipment > 0) sb.Append($" | equipment used {s.equipment}");
                 sumCombat += s.combat;
                 sumPassive += s.passive;
                 sumStanding += s.standing;
