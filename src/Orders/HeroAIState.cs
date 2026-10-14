@@ -48,6 +48,7 @@ namespace HighCommand.Orders
         private int seenIntent = -1;
         private Vector3 lastGoal;
         private CharacterBody lastEnemy;
+        private BrainMode lastMode;
 
         // the skill driver of the moment and the state of its button
         private AISkillDriver dominantDriver;
@@ -158,7 +159,10 @@ namespace HighCommand.Orders
         private void OnNewIntent(BroadNavigationSystem.Agent agent)
         {
             seenIntent = brain.IntentVersion;
-            bool replan = false;
+            // the game recomputes a path only every 2 s: after a fight the old path still leads to the last enemy, and
+            // an attack-move that meets a monster every few seconds would wander instead of marching
+            bool replan = brain.Mode != lastMode;
+            lastMode = brain.Mode;
             if (brain.Mode == BrainMode.Go && (brain.Goal - lastGoal).sqrMagnitude > GoalMovedReplan * GoalMovedReplan)
             {
                 lastGoal = brain.Goal;
