@@ -46,9 +46,32 @@ namespace HighCommand.Mode
         /// <summary>Server: the item pool changed (an item was gained). Triggers redistribution among heroes.</summary>
         public void OnPoolChanged()
         {
+            if (ItemDistributor.StageUnloading(Army))
+            {
+                // items still flying when the stage ended: the heroes' bodies are being unloaded with it
+                if (!syncPending && isActiveAndEnabled) { syncPending = true; StartCoroutine(SyncAfterUnload()); }
+            }
+            else
+            {
+                try { Items.Sync(Army); }
+                catch (Exception e) { Plugin.Log.LogError("Item distribution failed: " + e); }
+            }
+            PublishRoster(); // spare equipment travels with the roster
+            PoolChanged?.Invoke();
+        }
+
+        private bool syncPending;
+
+        private IEnumerator SyncAfterUnload()
+        {
+            // the old stage is gone within a frame or two; the cap only keeps the items from waiting forever
+            int frames = 0;
+            while (frames < 300 && ItemDistributor.StageUnloading(Army)) { frames++; yield return null; }
+            syncPending = false;
+            if (Settings.VerboseLog.Value) Plugin.Log.LogInfo($"Items: handed out after the stage unload ({frames} frame(s) later).");
             try { Items.Sync(Army); }
             catch (Exception e) { Plugin.Log.LogError("Item distribution failed: " + e); }
-            PublishRoster(); // spare equipment travels with the roster
+            PublishRoster();
             PoolChanged?.Invoke();
         }
 

@@ -43,6 +43,22 @@ namespace HighCommand.Army
             }
         }
 
+        /// <summary>
+        /// True while the old stage is being unloaded and the heroes' bodies still stand in it (an item that was still
+        /// flying lands in the pool then). A dying body cannot show a new item: the game's display loader returns
+        /// nothing and throws, so the items wait until the unload is over.
+        /// </summary>
+        internal static bool StageUnloading(ArmyManager army)
+        {
+            if (army == null) return false;
+            foreach (Hero h in army.Heroes)
+            {
+                CharacterBody body = h.Body;
+                if (body && !body.gameObject.scene.isLoaded) return true;
+            }
+            return false;
+        }
+
         /// <summary>Hands out whatever the pool gained since the last call.</summary>
         internal void Sync(ArmyManager army)
         {
@@ -68,19 +84,21 @@ namespace HighCommand.Army
                     ItemDef def = ItemCatalog.GetItemDef(idx);
                     if (def == null) continue;
 
-                    for (int n = given; n < have; n++)
+                    int handed = given;
+                    for (; handed < have; handed++)
                     {
                         if (mirror)
                         {
-                            foreach (Hero h in heroes) h.Master.inventory.GiveItemPermanent(idx, 1);
+                            foreach (Hero h in heroes) Give(h, idx);
                         }
                         else
                         {
                             Hero target = BestHero(heroes, def);
-                            if (target != null) target.Master.inventory.GiveItemPermanent(idx, 1);
+                            // a unit that did not reach the hero is tried again at the next Sync
+                            if (target != null && !Give(target, idx)) break;
                         }
                     }
-                    distributedTotal[idx] = have;
+                    distributedTotal[idx] = handed;
                 }
 
                 DistributeEquipment(army, heroes);
@@ -88,6 +106,35 @@ namespace HighCommand.Army
             finally
             {
                 busy = false;
+            }
+        }
+
+        /// <summary>
+        /// Gives one unit. The game reacts to the change at once (the hero's model shows the item, item behaviours
+        /// start), and that reaction can throw: the stage being unloaded while a droplet still flies, a mod's broken
+        /// display. Such an error must not stop the other items. Returns false only when the unit did not arrive.
+        /// </summary>
+        private static bool Give(Hero hero, ItemIndex idx)
+        {
+            Inventory inv = hero.Master.inventory;
+            int before = inv.GetItemCountPermanent(idx);
+            try
+            {
+                inv.GiveItemPermanent(idx, 1);
+                return true;
+            }
+            catch (System.Exception e)
+            {
+                CharacterBody body = hero.Body;
+                string where = body
+                    ? $"body active={body.gameObject.activeInHierarchy} sceneLoaded={body.gameObject.scene.isLoaded}"
+                    : "no body";
+                bool arrived = inv.GetItemCountPermanent(idx) > before;
+                Plugin.Log.LogWarning($"Items: giving {ItemCatalog.GetItemDef(idx)?.name} to {hero} threw " +
+                    $"({e.GetType().Name}: {e.Message}); {where}, stage={(Stage.instance ? Stage.instance.sceneDef?.cachedName : "none")}, " +
+                    $"unit {(arrived ? "arrived" : "did not arrive")}");
+                if (Settings.VerboseLog.Value) Plugin.Log.LogWarning(e.ToString());
+                return arrived;
             }
         }
 
@@ -244,7 +291,7 @@ namespace HighCommand.Army
             foreach (ItemDef def in units)
             {
                 Hero target = BestHero(heroes, def);
-                if (target != null) target.Master.inventory.GiveItemPermanent(def.itemIndex, 1);
+                if (target != null) Give(target, def.itemIndex);
             }
         }
 

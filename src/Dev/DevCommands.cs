@@ -546,12 +546,18 @@ namespace HighCommand.Dev
             Debug.Log($"HighCommand: rule {def.globalName} = {choice.localName}");
         }
 
-        [ConCommand(commandName = "hc_drop_random", flags = HostOnly, helpText = "hc_drop_random <count>: adds that many random white/green/red items to the pool (layout and balance tests).")]
+        [ConCommand(commandName = "hc_drop_random", flags = HostOnly, helpText = "hc_drop_random <count> [fly]: adds that many random white/green/red items to the pool (layout and balance tests); 'fly' launches them high up from a hero instead, as droplets that join the pool when they land or when the stage ends in flight.")]
         private static void CcDropRandom(ConCommandArgs args)
         {
             if (!UnityEngine.Networking.NetworkServer.active || !Mode.HighCommandRun.IsActive || !Run.instance)
                 throw new ConCommandException("Only the host can do this during a High Command run.");
             int count = Mathf.Clamp(args.GetArgInt(0), 1, 500);
+            CharacterBody from = null;
+            if (args.Count > 1 && args.GetArgString(1) == "fly")
+            {
+                foreach (var h in Mode.HighCommandRun.Instance.Army.Heroes) if (h.Body) { from = h.Body; break; }
+                if (!from) throw new ConCommandException("No hero with a body to launch the items from.");
+            }
             var lists = new[] { Run.instance.availableTier1DropList, Run.instance.availableTier2DropList, Run.instance.availableTier3DropList };
             var weights = new[] { 0.6f, 0.3f, 0.1f };
             int given = 0;
@@ -562,9 +568,16 @@ namespace HighCommand.Dev
                 var list = lists[pick];
                 if (list == null || list.Count == 0) continue;
                 PickupIndex p = list[Random.Range(0, list.Count)];
-                if (Army.LootService.Grant(new UniquePickup(p), null)) given++;
+                if (from)
+                {
+                    // straight up and fast: several seconds in the air, long enough for a stage change to catch them
+                    Vector3 velocity = new Vector3(Random.Range(-6f, 6f), 80f, Random.Range(-6f, 6f));
+                    PickupDropletController.CreatePickupDroplet(new UniquePickup(p), from.corePosition + Vector3.up * 3f, velocity);
+                    given++;
+                }
+                else if (Army.LootService.Grant(new UniquePickup(p), null)) given++;
             }
-            Debug.Log($"HighCommand: dropped {given} random items.");
+            Debug.Log($"HighCommand: {(from ? "launched" : "dropped")} {given} random items.");
         }
 
         [ConCommand(commandName = "hc_name", flags = HostOnly, helpText = "hc_name <SurvivorName>: prints the survivor's display name as code points (font / localisation checks).")]

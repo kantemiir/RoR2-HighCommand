@@ -1,0 +1,52 @@
+# Items still in the air when the stage changes: they fall into the pool while the old stage is being unloaded and
+# the heroes' bodies are dying. Nothing may throw, every unit must reach a hero once (pool == items on heroes).
+@wait 4
+@log === I0 run start
+hc_cfg startingheroes 1
+hc_start
+@scene lobby
+@wait 3
+pregame_start_run
+@run
+@wait 22
+hc_next_stage golemplains
+@wait 20
+hc_cfg ignoreunlocks true
+hc_gold 200000
+hc_recruit Merc
+hc_recruit Huntress
+hc_recruit Commando
+@wait 6
+hc_kill_enemies
+hc_invulnerable true
+hc_cfg verbose true
+@log === I1 items on the ground in the middle of a stage (baseline)
+hc_drop_random 8
+@wait 2
+hc_pool
+hc_inventory
+@log === I2 items launched high, the stage changes while they fly
+hc_drop_random 12 fly
+hc_next_stage ancientloft
+@wait 12
+hc_pool
+hc_inventory
+hc_status
+@log === I3 the same once more, on a stage reached without the teleporter
+hc_invulnerable true
+hc_drop_random 12 fly
+hc_next_stage
+@wait 12
+hc_pool
+hc_inventory
+@log === I4 items on the ground again (the distributor still works)
+hc_drop_random 6
+@wait 2
+hc_pool
+hc_inventory
+@log === END
+hc_cfg verbose false
+disconnect
+@norun
+@wait 4
+@quit

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+* Fix: items still flying when the stage changed (boss reward, chest drops) broke the item distribution with
+  "Item distribution failed: The Object you want to instantiate is null": the game cannot show a new item on a hero's
+  body while the old stage is being unloaded, and the error stopped the other items until the next pick-up (and the unit
+  that failed was handed out a second time later). Now the items wait for the unload to end (one frame) and go out as
+  usual; an error on one item no longer stops the others. Dev: `hc_drop_random <n> fly` launches the items as droplets,
+  scenario `tools\qa\itemstage.txt`.
+
 ## 0.15.0 - order marks like the game's ping, camera tilt anywhere
 
 * Order marks in the look of the game's ping, no more line and ring on the ground after every order:
