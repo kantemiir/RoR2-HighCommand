@@ -94,6 +94,34 @@ away from them.
 **Equipment** (`EquipmentUser`): config lists `EquipmentInCombat`, `EquipmentWhenHurt` (below half health), `EquipmentVsBoss`;
 aims at the target until the aim is on it (at most 1 s), presses once, waits 2 s before another try.
 
+## Results (Titanic Plains, the same scenario for the old build f5fe6a9 and the new one)
+
+| Test | Old AI | New AI |
+|---|---|---|
+| Move orders reached (O1, 3 orders x 6 heroes) | 7 of 18, 11 dropped | 18 of 18 |
+| Move through enemies (O2) | 5 of 6 | 6 of 6 |
+| Attack-move 70 m into a group (O3, 25 s) | 1 of 6 arrived | 6 of 6 |
+| Hold: farthest drift from the spot (O4) | 39.7 m | 5.1 m (radius 4 m) |
+| Hold: damage | 93 /s | 86-302 /s |
+| Focus fire on the biggest enemy (O5) | 175 /s | 275 /s |
+| Retreat out of a fight, at the rally point in 12 s (O6) | 0 of 6 | 4-6 of 6 |
+| No attack while a seen enemy is in reach, fights without orders (A1-A4) | 47-60 % | 17-37 % |
+| Six skirmishes without orders (`aiskirmish`), total damage | 28 428 | 31 555 (111 %) |
+| Boss with guards (`aiboss`), 4 heroes | - | 275 /s, no attack 6 % of the time |
+| Teleporter event: time inside the zone | - | 99-100 % |
+| Cost with 50 enemies: brains / executors | - | 2-3 / 0.6 ms per second |
+
+Single runs vary a lot (where the monsters spawn decides how long they take to meet the army); compare sums of several
+fights on one map, never one fight.
+
+## Known limits
+
+* The skills themselves are still chosen by the survivors' own drivers: what they do badly (Loader's grapple swings past
+  its target, Mercenary's dash overshoots) stays, only the moment and the place are ours.
+* A melee hero on hold cannot reach monsters that keep away; it uses ranged skills only (Acrid's spit, Loader's pylon).
+* Survivors without a profile (modded ones) get the fallback: melee or ranged by the reach of their primary attack (under 10 m = melee), no mobility skills known, all rules "auto".
+* Equipment is used only from the config lists; pieces not listed wait for the cast order.
+
 ## Tuning
 
 * Global: config section `[AI]` (`src\Core\AiTuning.cs`), most also in Mod Options.

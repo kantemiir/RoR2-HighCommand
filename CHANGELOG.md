@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+Heroes' AI rebuilt (details and measurements: `docs\dev\AI.md`)
+* Obedient: move orders are done at once and to the point (reaction about 0.4 s; in the test 18 of 18 move orders and
+  6 of 6 attack-moves reached their point, the old AI 7 of 18 and 1 of 6). Hold position keeps a hero within
+  `AI/HoldRadius` (4 m): skills that move it (dashes, leaps, the grapple, Ion Surge) are not used, a hero pushed off walks
+  back (before: up to 40 m away). Formation places next to a cliff no longer snap to its foot; hold no longer takes its
+  point in mid-air; a stuck hero jumps, looks for a new way, sidesteps and as the last resort hops along its path.
+* Aggressive: without orders a hero fights what comes near its post and helps friends who fight within `AI/AssistRange`;
+  far from its post it fights monsters around it instead of walking past them. Time without attacking while an enemy
+  is in reach went down from 47-60 % to 6-37 %; damage in the test fights 111 % of the old AI, focus fire 157 %.
+* Smart targets: the monster hitting this hero or a friend, the commander's mark, Mending elites, bosses, elites, hard
+  hitters and the wounded first; focus fire on what friends shoot (`AI/FocusFireWeight`); targets out of reach are left
+  for a while (never a seen one within reach, a boss gets twice the patience).
+* Every skill: a forbidden skill (a held-back ultimate, an escape roll) no longer blocks the skills after it; walking-only
+  rules no longer keep Commando from shooting closer than 15 m; a seen enemy within reach always gets the primary;
+  'burst' skills wait for a group or a boss at most `AI/BurstHoardSeconds`; equipment is used by itself
+  (`AI/EquipmentInCombat`, `EquipmentWhenHurt`, `EquipmentVsBoss`, `AI/AutoEquipment`).
+* Melee heroes go straight at a target they see; ranged ones keep their range as the game measures it, back off when
+  rushed and sidestep. Nobody walks off a ledge after its target or dashes over an edge (ground is checked under the
+  whole dash); the game's path jumps no longer pull heroes out of their place.
+* Running away only from a real threat (hurt and being hit or chased), with the get-away skill, and back into the fight
+  as soon as nobody is after it; at most `AI/FleeMaxSeconds`. Retreat orders use the get-away skill too.
+* New config section `[AI]` (most also in Mod Options); hero profiles format 2 (`mobility`: skills that move the hero; an
+  old file is kept as `.old`).
+* Dev: `hc_ai reset|report|trace on`, `hc_order`, `hc_spawn_at`, `hc_hurt`, `hc_equip`, `hc_warp tp`; scenarios `aibase`,
+  `aiskirmish`, `aiedge`, `aitrace`, `aimelee`, `aiboss`, `ailos`.
+
 * Fix: items still flying when the stage changed (boss reward, chest drops) broke the item distribution with
   "Item distribution failed: The Object you want to instantiate is null": the game cannot show a new item on a hero's
   body while the old stage is being unloaded, and the error stopped the other items until the next pick-up (and the unit

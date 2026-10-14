@@ -56,6 +56,8 @@ namespace HighCommand.Orders
         private const float MinAttackRange = 4f, MaxAttackRange = 60f;
         private const float RangeMargin = 2f;            // ranged heroes stand this much inside their reach
         private const float MinFightRange = 6f;
+        private const float MeleeRangeLimit = 10f;       // a profile-less survivor whose primary reaches less is melee
+        private const float FallbackStandoff = 18f;      // ... and one that reaches farther keeps this distance
         private const float CastTimeout = 3f;            // a cast that did not happen by then is dropped
 
         // ---- set from outside ----------------------------------------------------------------------------------
@@ -132,11 +134,24 @@ namespace HighCommand.Orders
         /// <summary>How far its farthest skill that does not move it reaches (at least <see cref="AttackRange"/>).</summary>
         public float SkillReach { get; private set; } = DefaultAttackRange;
 
-        /// <summary>A melee hero fights at arm's length; the others keep <see cref="FightRange"/>.</summary>
-        public bool Melee => Profile.standoff <= 0f;
+        /// <summary>
+        /// A melee hero fights at arm's length; the others keep <see cref="FightRange"/>. A survivor without its own profile
+        /// (a modded one) is judged by the reach of its primary attack.
+        /// </summary>
+        public bool Melee => IsFallbackProfile ? AttackRange < MeleeRangeLimit : Profile.standoff <= 0f;
 
         /// <summary>The distance a ranged hero keeps from its target (0 for melee).</summary>
-        public float FightRange => Melee ? 0f : Mathf.Max(MinFightRange, Mathf.Min(Profile.standoff, AttackRange - RangeMargin));
+        public float FightRange
+        {
+            get
+            {
+                if (Melee) return 0f;
+                float wanted = IsFallbackProfile ? FallbackStandoff : Profile.standoff;
+                return Mathf.Max(MinFightRange, Mathf.Min(wanted, AttackRange - RangeMargin));
+            }
+        }
+
+        private bool IsFallbackProfile => Profile.survivor == "*";
 
         private HeroProfile profile;
 
