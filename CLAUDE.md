@@ -37,14 +37,27 @@ BepInEx-плагин `kantemiir.HighCommand`: отдельный RTS-режим 
 * Проверка UI/ввода — только «настоящим путём» (клик/клавиша через `hc_click`/`hc_key`/`hc_menu_extra real`),
   а не прямым вызовом метода: так уже пропустили неработающую кнопку меню.
 
-## Оформление интерфейса (0.10.x)
-* Единый стиль живёт в `src\UI\UiKit.cs`: `NewPanel` (скошенные углы + оранжевые метки), `Shape`/`StyleOutline`/`NewFill`
-  (рамка и заливка со скошенными углами), `Dot`, `GlyphSprite`. Новые панели и карточки строить через них, а не
-  через `UiKit.White` с рамкой 2 px.
-* Картинки кнопок приказов рисуются кодом в `src\UI\GlyphArt.cs` (без файлов). Посмотреть без игры:
-  `dotnet run --project tools\glyph-preview -- <файл.png>` (SDK: `%LOCALAPPDATA%\dotnet-sdk`).
-* Вид интерфейса проверять сценарием `uishot` (`qa-run.ps1 uishot`) и скриншотами; «до/после» — `docs\dev\ui-rework\`.
-  Скриншоты для README (`docs\screenshots\*.jpg`) снимает сценарий `showcase` (язык игры на время → en, затем обратно).
+## Оформление интерфейса (с 0.17, стиль ванильного HUD — `docs\dev\UI_STYLE.md`)
+* Решение пользователя 2026-10-15: интерфейс должен выглядеть как родной HUD RoR2 (без «нейрослопа»: свечений,
+  градиентов, скошенных панелей с оранжевыми метками). Метки/пинги/кольца в мире — отдельно, их этот стиль не касается.
+* Цвета, размеры, отступы, тайминги — только из `src\UI\Theme.cs`; ассеты игры (рамки, плашки, обводки, кулдаун,
+  чекбоксы, иконки, стиль полосок союзников) — `src\UI\HudArt.cs` (Addressables + замена той же формы, если ключ пропал).
+  Компоненты: `KeyLabel`, `IconButton` (приказ), `SkillSlot` (как `SkillDisplay`), `MenuButton`, `Window` (диалог игры),
+  `Tooltip`/`Toast`, `UiMotion` (`HoverOutline`, `Fader`), `UiSound`. Новые элементы собирать из них.
+* Панели: `PurseCluster` (деньги), `RunPanel` (ванильная панель забега, `Run.InstantiateUi`) + `ArmyObjectives` (цели
+  через `ObjectivePanelController.collectObjectiveSources`; «Победите босса» добавляет сам `BossGroup`), `ArmyItemStrip`,
+  `RosterPanel` (префаб `AllyCard`), `CommandCard`, `AbilityBar`, окна `BarracksPanel`/`InventoryPanel`/`HelpOverlay`
+  (одно окно за раз, `ClientRoot.Open`). Каждая панель тикает в своём try/catch (`ClientRoot.Failed`): одна упавшая не
+  роняет остальные. Масштаб = `Interface/UiScale` × `hud_scale` игры.
+* Картинки приказов, которых нет в игре, рисуются кодом в `src\UI\GlyphArt.cs` (белый силуэт + жёсткая тень). Посмотреть
+  без игры: `dotnet run --project tools\glyph-preview -- <файл.png>` (SDK: `%LOCALAPPDATA%\dotnet-sdk`).
+* Проверка вида: `qa-run.ps1 uiaudit` (все состояния, подсказки, окна, кулдауны, павшие, телепорт; `ua_*.png`) и `uires`
+  (720p, 4:3, 21:9, 4K через `hc_screenshot <имя> 2`, UiScale 0.8/1.3, hud_scale 70/130; `rs_*.png`). Эталон игры —
+  `vanillaui`/`vanillaui2` (`hc_dump_ui`, `hc_dump_skin`, `hc_dump_hbs`, `hc_dump_styles`). Пока идёт сценарий,
+  настоящие мышь и клавиатура игнорируются (`ClientInput.ScriptedOnly`); смена окна в сценарии открывает паузу —
+  `hc_unpause`. Скриншоты для README снимает `showcase` (язык игры на время → en, затем обратно).
+* Приказы — сетка значков справа внизу (5×3, клавиша в углу), выпадающего списка больше нет: в сценариях кликать по
+  значкам (координаты — в шапке `tools\qa\cursor.txt`).
 * Внутренние заметки (HANDOFF, STATUS, AUDIT, DESIGN, промты) — в `docs\dev\`.
 * Камера переписана 2026-10-13 (исследование и устройство — `docs\dev\CAMERA.md`). Решение пользователя: «больше
   свободы, чем меньше камера делает сама — тем лучше». По умолчанию СВОБОДНАЯ камера (`Camera/FollowGround`=false):
@@ -64,9 +77,8 @@ BepInEx-плагин `kantemiir.HighCommand`: отдельный RTS-режим 
   силуэт героя за большой землёй (`IsBehindGround`); край экрана прокручивает и над панелями; фокус не выходит за
   рамку узлов +24 м. Проверки: `qa-run.ps1 camfree` (проезды: «focus height a..a», «tilt speed 0»), `camsmooth`,
   `camaudit`/`camheight` (режим FollowGround), `camxray` (виды «сквозь породу»), `hc_cam info|spot|lift|rock`.
-* Панель способностей командира (2026-10-13): плитки `UI\AbilityTile.cs` — свой цвет у каждой (`AbilityTile.Colors`,
-  им же красится курсор выбора цели), значок в цветной нише со свечением (`UiKit.Glow`), полоска заряда, вспышка при
-  готовности. Проверка — `qa-run.ps1 abilities` (скриншоты `ab_*.png`).
+* Способности командира (F5–F8): ячейки `SkillSlot` в `UI\AbilityBar.cs` с игровыми иконками (`HudArt.AbilityIcon`);
+  цвет способности для курсора выбора цели — `UI\CommanderLook.cs`. Проверка — `qa-run.ps1 abilities` (`ab_*.png`).
 * Картинка миникарты строится в `MapInfo.BuildTexture` (покрытие + рельеф), рамка камеры и точки — в `UI\Minimap.cs`.
 * Линии приказов (2026-10-13): путь по графу (`PathCost.Route`: обрезка крючков у концов + 2 прохода сглаживания, кэш
   `UI\RouteCache`, бюджет ~1 мс/кадр). Рисуются одной сеткой `UI\RouteMesh`: лента с тёмной обводкой, световые импульсы к

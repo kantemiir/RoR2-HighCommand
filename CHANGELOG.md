@@ -5,6 +5,25 @@
 * Holding Shift no longer puts a mark (the chevrons and the light) under the pointer: Shift only shows the lines, the
   mark comes with the click.
 
+Interface rebuilt in the look of the game's own HUD (style guide: `docs\dev\UI_STYLE.md`)
+* The mode's panels use the stock HUD's own frames, plates, outlines, hover frames, cooldown picture, checkboxes, icons,
+  fonts, colours and sounds instead of drawn chamfered panels with orange ticks and glowing tiles.
+* Top left: the gold as the stock money box (counts up with the coin sound), the army and the next hero's price under
+  it. Top right: the run's own panel (timer, difficulty, stage) and objectives told for the army: the teleporter with
+  its key, the heroes in its zone, the chests of the stage. Top centre: the army's items as the stock item bar.
+* Left: the army as the stock ally cards (portrait, health bar with shield and barrier) with level, rank, order and
+  control group; a fallen hero's card shows the revival price, a click buys it.
+* Bottom right: the selected hero's skills as the stock skill bar (cooldowns, charges, the auto-use checkbox) and every
+  order as an icon with its key: no more drop-down orders list. Bottom centre: the commander's abilities as a skill bar
+  with the game's own pictures, and the barracks / items / hotkeys icons.
+* Windows in the game's dialog look: the barracks as the character select, the items as the scoreboard, the hotkey sheet;
+  one window at a time, a click beside it closes it. Tooltips, messages and the defeat banner as the game draws them.
+* The game's HUD scale setting applies to the mode's interface too (on top of `Interface/UiScale`). Checked at 1280x720,
+  1920x1080, 4K, 1440x1080 (4:3) and 1920x822 (21:9).
+* Dev: `hc_dump_ui`, `hc_dump_skin`, `hc_dump_hbs`, `hc_dump_styles` (the game's interface), `hc_barrier`, `hc_unpause`,
+  `hc_screenshot <name> [factor]`; the old scene dump is `hc_dump_scene`; scenarios `uiaudit`, `uires`, `vanillaui`.
+  A running test script ignores the real mouse and keyboard; `qa-run.ps1` also keeps the game's own settings.
+
 ## 0.16.0 - heroes' AI rebuilt
 
 Heroes' AI rebuilt (details and measurements: `docs\dev\AI.md`)

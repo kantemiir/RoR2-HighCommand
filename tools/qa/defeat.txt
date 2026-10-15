@@ -10,10 +10,10 @@ pregame_start_run
 @wait 20
 hc_gold 2000
 hc_status
-@log === D2 every hero falls; one second later (the strip is up) click on it (screen y = 1080 - 172)
+@log === D2 every hero falls; one second later (the strip is up) click on it (screen y = 1080 - 226)
 hc_kill_heroes
 @wait 1
-hc_click 960 908
+hc_click 960 854
 @wait 0.6
 hc_status
 @log === D3 the same click again must not break anything

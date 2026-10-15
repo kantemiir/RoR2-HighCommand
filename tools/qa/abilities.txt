@@ -18,8 +18,8 @@ hc_mouse 140 140
 @wait 2
 @log === A2 at rest
 hc_screenshot ab_rest
-@log === A3 the pointer over the war cry tile
-hc_mouse 1007 69
+@log === A3 the pointer over the war cry slot (F7, bottom centre)
+hc_mouse 1060 65
 @wait 0.6
 hc_screenshot ab_hover
 @log === A4 the mark waits for its enemy (F8, the real key; the strike starts the run recharging)
