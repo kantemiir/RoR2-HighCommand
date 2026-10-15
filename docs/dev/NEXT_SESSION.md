@@ -4,7 +4,12 @@ Read first: `CLAUDE.md` (rules, paths, commands), then `CHANGELOG.md` (top secti
 
 ## State
 * Mod "High Command" (RTS mode for Risk of Rain 2), repo `C:\Users\user\Documents\RoR2Strategy`,
-  git: `_tools\mingit\cmd\git.exe`. Latest release: 0.13.0 (tag `v0.13.0`, 2026-10-13).
+  git: `_tools\mingit\cmd\git.exe`. Latest release: 0.17.0 (tag `v0.17.0`, 2026-10-15: the interface in the game's own
+  HUD look; README and the GitHub release lead with before / after pictures against 0.11.0, made by putting the 0.11.0
+  shots from git `85ce336` over the new ones, 1280 px wide, labels BEFORE / AFTER).
+* Thunderstore shows README pictures from raw.githubusercontent (cached 5 min): push the pictures BEFORE uploading the
+  zip; an old picture on the page right after is the browser's cache (Ctrl+Shift+R).
+* Thunderstore may not render HTML such as `<details>`: keep README to plain markdown.
 * Published: GitHub https://github.com/kantemiir/RoR2-HighCommand (release v0.13.0 with the zip) and Thunderstore
   https://thunderstore.io/c/riskofrain2/p/kantemiir/HighCommand/ (0.13.0, categories AI Generated + Gamemodes + Mods).
 * How to publish (worked for 0.13.0): GitHub release with `gh` (`C:\Users\user\AppData\Local\Temp\claude\gh_bin\bin\gh.exe`,
