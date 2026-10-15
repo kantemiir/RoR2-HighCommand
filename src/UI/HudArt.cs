@@ -102,6 +102,29 @@ namespace HighCommand.UI
 
         internal static Texture CooldownRemap => LoadTexture("RoR2/Base/UI/texCooldownRemap.png");
 
+        // ---- the health bar style of allies over their heads ---------------------------------------------------
+
+        private static RoR2.UI.HealthBarStyle allyBarStyle;
+        private static bool allyBarSearched;
+
+        /// <summary>
+        /// The style of the bars over allies' heads: made for a thin bar (its barrier is a thin strip, where the big HUD
+        /// bar's style draws a tall box round the bar). Null when the game no longer has it.
+        /// </summary>
+        internal static RoR2.UI.HealthBarStyle AllyBarStyle
+        {
+            get
+            {
+                if (allyBarSearched) return allyBarStyle;
+                allyBarSearched = true;
+                const string key = "RoR2/Base/Common/CombatHealthBarAlly.asset";
+                if (!Exists<RoR2.UI.HealthBarStyle>(key)) { Note(key, null); return null; }
+                try { allyBarStyle = Addressables.LoadAssetAsync<RoR2.UI.HealthBarStyle>(key).WaitForCompletion(); }
+                catch (Exception e) { Note(key, e); }
+                return allyBarStyle;
+            }
+        }
+
         // ---- the commander's abilities: the game's own pictures for the same ideas -----------------------------
 
         private static readonly Sprite[] abilityIcons = new Sprite[4];

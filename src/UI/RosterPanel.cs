@@ -111,6 +111,7 @@ namespace HighCommand.UI
                     if (stock)
                     {
                         c.health = stock.healthBar;
+                        UseAllyBarStyle(c.health);
                         c.name = stock.nameLabel;
                         c.portrait = stock.portraitIconImage;
                         // the card follows a master by itself, rebuilding names every frame: the roster drives it instead
@@ -168,6 +169,19 @@ namespace HighCommand.UI
             return c;
         }
 
+        private static readonly System.Reflection.FieldInfo HealthBarStyleField =
+            typeof(HealthBar).GetField("_style", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+        // The card's bar is a few pixels tall here; the stock card's own style (the big HUD bar's) draws a barrier as a
+        // tall box round it. Set before the bar's Start, which builds its pieces from the style.
+        private static void UseAllyBarStyle(HealthBar bar)
+        {
+            HealthBarStyle style = HudArt.AllyBarStyle;
+            if (!bar || !style || HealthBarStyleField == null) return;
+            try { HealthBarStyleField.SetValue(bar, style); }
+            catch (System.Exception e) { Plugin.Log.LogWarning("RosterPanel: the ally bar style was not applied: " + e.Message); }
+        }
+
         private static void IgnoreLayout(GameObject go)
         {
             var e = go.AddComponent<LayoutElement>();
@@ -206,14 +220,19 @@ namespace HighCommand.UI
             c.bars.offsetMax = Vector2.zero;
 
             // the name above, the stock bar along the bottom (as the stock card: 6 high, 6 from the edges)
-            Fill(c.name.rectTransform, BarPad, BarPad + BarH + 1f, NameRoom, 2f);
+            PlaceName(c, c.alive != 0);
             if (c.health) Fill((RectTransform)c.health.transform, BarPad, BarPad, BarPad, height - BarPad - BarH);
-            Fill(c.revive.rectTransform, BarPad, 2f, BarPad, height - BarPad - BarH - 8f);
+            Fill(c.revive.rectTransform, BarPad, RevivePad, BarPad, height - RevivePad - ReviveH);
             bool roomy = height >= 40f;
             c.order.rectTransform.anchoredPosition = new Vector2(roomy ? -4f : -60f, roomy ? -18f : -3f);
         }
 
+        // A fallen hero's price line is taller than the bar it replaces: the name moves up to stay clear of it.
+        private static void PlaceName(Card c, bool alive) =>
+            Fill(c.name.rectTransform, BarPad, alive ? BarPad + BarH + 1f : RevivePad + ReviveH, NameRoom, 2f);
+
         private const float BarPad = 6f, BarH = 6f;
+        private const float RevivePad = 2f, ReviveH = Theme.SizeSmall + 3f;
         private const float NameRoom = 52f;   // right of the name: the level and the order
 
         private static void Fill(RectTransform rt, float left, float bottom, float right, float top)
@@ -323,6 +342,7 @@ namespace HighCommand.UI
                 if (!c.portrait.texture) c.portrait.texture = PortraitOf(hero);
                 c.level.gameObject.SetActive(alive);
                 c.revive.gameObject.SetActive(!alive);
+                PlaceName(c, alive);
                 // a fallen hero's bar gives way to the revival price; the bar keeps running (it draws the red cross)
                 if (c.health)
                 {

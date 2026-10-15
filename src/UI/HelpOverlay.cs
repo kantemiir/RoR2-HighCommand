@@ -109,8 +109,9 @@ namespace HighCommand.UI
 
                     default:
                     {
-                        // the keys on a plate, as under the skill bar
-                        Image plate = UiKit.Sliced("Keys", rowsHost, HudArt.Plate, Theme.Plate);
+                        // the keys on a plate, as under the skill bar; the HUD's dark plate vanishes on the dialog's black,
+                        // so the plate takes the dialog's own inner tone
+                        Image plate = UiKit.Sliced("Keys", rowsHost, HudArt.Plate, Theme.WindowInner);
                         TextMeshProUGUI keys = UiKit.NewText("Text", plate.rectTransform, e.keys, Theme.SizeKey, Theme.TextHud, TextAlignmentOptions.Center);
                         UiKit.Stretch(keys.rectTransform, 6f, 0f, 6f, 0f);
                         Fit(keys, 11f, Theme.SizeKey);

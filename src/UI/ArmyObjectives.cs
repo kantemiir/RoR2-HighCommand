@@ -82,11 +82,11 @@ namespace HighCommand.UI
             HcState state = HcState.Instance;
             if (tp && state != null)
             {
+                // the boss is not here: every boss group reports its own "defeat the boss" while it has members
                 System.Type type = null;
                 switch (state.Teleporter)
                 {
                     case HcState.TeleState.Idle: type = typeof(FindTeleporterObjective); break;
-                    case HcState.TeleState.BossAlive: type = typeof(BossObjective); break;
                     case HcState.TeleState.Charged: type = typeof(ExitObjective); break;
                 }
                 if (type != null)
@@ -124,15 +124,6 @@ namespace HighCommand.UI
         {
             shownKey = Settings.KeyTeleporter.Value;
             return Language.GetString(baseToken) + ArmyObjectives.KeyLine(shownKey, "HIGHCOMMAND_OBJ_TP_ACTIVATE");
-        }
-    }
-
-    internal sealed class BossObjective : ObjectivePanelController.ObjectiveTracker
-    {
-        public BossObjective()
-        {
-            baseToken = "OBJECTIVE_DEFEAT_BOSS";
-            isPrimary = true;
         }
     }
 

@@ -92,6 +92,7 @@ namespace HighCommand.UI
                 checkbox = UiKit.NewImage("Auto", Root, HudArt.CheckboxOn, Color.white);
                 UiKit.Place(checkbox.rectTransform, new Vector2(0f, 1f), new Vector2(0.5f, 0.5f), new Vector2(2f, -2f),
                     new Vector2(CheckboxSize, CheckboxSize));
+                checkbox.enabled = false;   // as shownAuto: no switch until a skill reports one
             }
 
             key = new KeyLabel(Root);
