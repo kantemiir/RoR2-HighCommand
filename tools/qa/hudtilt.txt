@@ -1,0 +1,80 @@
+# The corner clusters leaning in as the stock HUD's (hudtilt_*.png) and the game's item card on a click on an item.
+# Pieces of the interface are found by name (hc_ui_where / hc_mouse_ui / hc_click_ui <name> [n]): the tilt moves them off a grid.
+@wait 4
+@log === T1 run start, a few heroes, items
+hc_start
+@scene lobby
+@wait 3
+pregame_start_run
+@run
+@wait 20
+hc_gold 6000
+hc_recruit Commando
+hc_recruit Huntress
+hc_recruit Mage
+hc_drop_random 14
+hc_equip CommandMissile
+@wait 22
+hc_cam army
+hc_cam dist 45
+hc_select all
+@wait 1
+@log === T2 the HUD at rest, and at 4K
+hc_screenshot hudtilt_hud
+hc_screenshot hudtilt_4k 2
+hc_ui_where Order_HIGHCOMMAND_CMD_HOLD
+hc_ui_where Order_HIGHCOMMAND_CMD_ATTACKMOVE
+hc_ui_where Skill_1
+hc_ui_where Card 1
+hc_ui_where Ability2
+hc_ui_where Item 1
+@log === T3 hover and click on the tilted panels (the real input path)
+hc_mouse_ui Order_HIGHCOMMAND_CMD_HOLD
+@wait 0.6
+hc_screenshot hudtilt_hover_order
+hc_click_ui Order_HIGHCOMMAND_CMD_HOLD
+@wait 0.5
+hc_status
+hc_mouse_ui Card 2
+@wait 0.6
+hc_screenshot hudtilt_hover_card
+hc_click_ui Card 2
+@wait 0.5
+hc_ping
+@log (selected=1 now: the click on the second card selects that hero)
+hc_select all
+@log === T4 the item card from the item bar
+hc_click_ui Item 1
+@wait 1
+hc_ping
+hc_screenshot hudtilt_card
+@log (card=<the first item's name>)
+hc_click 960 540 0
+@wait 0.5
+hc_ping
+@log (card=none, still selected=3: the click only closed the card)
+@log === T5 the item card from the item panel, closed by Esc
+hc_key I
+@wait 1
+hc_click_ui top:Item 2
+@wait 1
+hc_ping
+hc_screenshot hudtilt_card_items
+hc_key Escape
+@wait 0.5
+hc_ping
+@log (card=none, inventory=True: Esc closed the card first)
+hc_key Escape
+@wait 0.5
+hc_input_end
+@log === T6 the minimap through the tilted corner: a click flies the camera
+hc_cam info
+hc_click_ui Map
+@wait 1
+hc_cam info
+@log === END
+hc_status
+disconnect
+@norun
+@wait 4
+@quit

@@ -1,6 +1,6 @@
-﻿# Context pointer badge, path preview and the order icons of the command card (screenshots cur_*.png).
-# Screen coordinates are 1920x1080 with the origin at the bottom left. The order icons sit in a 5 x 3 grid bottom
-# right: columns at x = 1460 + 42 * column, rows at y = 120 - 42 * row (row 0: attack-move Q, focus F ...).
+# Context pointer badge, path preview and the order icons of the command card (screenshots cur_*.png).
+# Screen coordinates are 1920x1080 with the origin at the bottom left. The order icons sit in the bottom right corner,
+# which leans in as the stock HUD's: they are found by name (hc_mouse_ui / hc_click_ui Order_<token>).
 @wait 4
 @log === C0 run start
 hc_start
@@ -59,16 +59,16 @@ hc_screenshot cur_mode
 hc_click 960 540 1
 @wait 0.5
 hc_ping
-@log === C8 Hold from the command card (the R icon, row 2 column 2, bottom right)
-hc_mouse 1500 79
+@log === C8 Hold from the command card (the R icon, bottom right)
+hc_mouse_ui Order_HIGHCOMMAND_CMD_HOLD
 @wait 0.6
 hc_screenshot cur_menu
-hc_click 1500 79
+hc_click_ui Order_HIGHCOMMAND_CMD_HOLD
 @wait 1
 hc_ping
 hc_status
-@log === C9 attack-move armed from its icon (Q, row 1 column 1), cancelled by Esc (the pause key)
-hc_click 1460 120
+@log === C9 attack-move armed from its icon (Q), cancelled by Esc (the pause key)
+hc_click_ui Order_HIGHCOMMAND_CMD_ATTACKMOVE
 @wait 1
 hc_ping
 pause

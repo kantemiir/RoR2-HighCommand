@@ -23,6 +23,10 @@ hc_recruit Toolbot
 hc_recruit Loader
 hc_recruit Croco
 @wait 28
+# the whole army in the pictures: whoever fell on the way is back (a new body, so before the invulnerability)
+hc_revive
+hc_revive
+@wait 3
 hc_invulnerable true
 hc_drop_random 40
 @wait 4
@@ -47,7 +51,7 @@ hc_ability 0
 hc_screenshot show_strike
 @wait 3
 hc_ability 2
-hc_cam army
+hc_cam hero Croco
 hc_cam dist 8
 @wait 3
 hc_screenshot show_close
@@ -99,11 +103,11 @@ hc_key I
 hc_screenshot show_items
 hc_key I
 @wait 1
-@log === S6 the teleporter
+@log === S6 the teleporter (the army is put next to it: the walk there is not the picture)
+hc_warp tp
+@wait 2
 hc_tp
-@wait 6
-hc_tp
-@wait 30
+@wait 25
 hc_cam army
 hc_cam pitch 55
 hc_cam dist 60

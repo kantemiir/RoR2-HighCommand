@@ -1,4 +1,4 @@
-﻿# Order routes (drawn while Shift is held: the scenario keeps the synthetic Shift down): the line follows the ground graph, a long way fades in its middle, a target off the screen gets an
+# Order routes (drawn while Shift is held: the scenario keeps the synthetic Shift down): the line follows the ground graph, a long way fades in its middle, a target off the screen gets an
 # arrow at the edge with the distance. Screenshots route_*.png; hc_overlay prints the route search counters.
 @wait 4
 @log === R0 run start
@@ -19,13 +19,13 @@ hc_cam dist 60
 @wait 2
 hc_select all
 @log === R1 the preview of a far order (Shift: the line is drawn over bare ground)
-hc_mouse 1750 950 shift
+hc_mouse 1300 880 shift
 @wait 1
 hc_overlay
 hc_screenshot route_preview
 @log === R2 the order given: the routes of the heroes
-hc_click 1750 950 1
-hc_mouse 1750 950 shift
+hc_click 1300 880 1
+hc_mouse 1300 880 shift
 @wait 1.5
 hc_status
 hc_overlay

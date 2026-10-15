@@ -1,5 +1,5 @@
 # The interface in all its states (ua_*.png): HUD, selection, tooltips, windows, a fallen hero, items, cooldowns.
-# Coordinates are screen pixels at 1920x1080, origin bottom left.
+# Coordinates are screen pixels at 1920x1080, origin bottom left; the HUD's pieces are found by name (hc_mouse_ui).
 @wait 4
 @log === U1 run start, a few heroes, items
 hc_start
@@ -33,22 +33,22 @@ hc_barrier 0.4
 @wait 0.8
 hc_screenshot ua_barrier
 @log === U4 tooltips: an order, an ability, a hero card, a skill, the purse, an item
-hc_mouse 1479 109
+hc_mouse_ui Order_HIGHCOMMAND_CMD_ATTACKMOVE
 @wait 0.6
 hc_screenshot ua_tip_order
-hc_mouse 941 65
+hc_mouse_ui Ability0
 @wait 0.6
 hc_screenshot ua_tip_ability
-hc_mouse 130 946
+hc_mouse_ui Card 1
 @wait 0.6
 hc_screenshot ua_tip_hero
-hc_mouse 1700 65
+hc_mouse_ui Skill_2
 @wait 0.6
 hc_screenshot ua_tip_skill
-hc_mouse 120 1030
+hc_mouse_ui Purse
 @wait 0.6
 hc_screenshot ua_tip_purse
-hc_mouse 960 1040
+hc_mouse_ui Item 1
 @wait 0.6
 hc_screenshot ua_tip_item
 hc_input_end

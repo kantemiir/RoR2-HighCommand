@@ -178,7 +178,7 @@ namespace HighCommand.Dev
             Debug.Log("HighCommand: screenshot -> " + path);
         }
 
-        [ConCommand(commandName = "hc_cam", flags = HostOnly, helpText = "hc_cam army | dist <m> | yaw <deg> | at <x> <z>: moves the RTS camera (testing).")]
+        [ConCommand(commandName = "hc_cam", flags = HostOnly, helpText = "hc_cam army | hero <id|name> | dist <m> | yaw <deg> | at <x> <z>: moves the RTS camera (testing).")]
         private static void CcCam(ConCommandArgs args)
         {
             var cam = Client.RtsCamera.Instance;
@@ -202,6 +202,23 @@ namespace HighCommand.Dev
                 case "follow":
                     cam.FollowTarget = () => Client.ClientRoot.ArmyCenter();
                     break;
+                case "hero":
+                {
+                    // hc_cam hero <id | survivor name part>: looks at one living hero (a close view of someone in particular)
+                    var run = Mode.HighCommandRun.Instance;
+                    if (run == null) throw new ConCommandException("Not in a High Command run.");
+                    string who = args.GetArgString(1);
+                    bool byId = int.TryParse(who, out int id);
+                    Army.Hero found = null;
+                    foreach (var h in run.Army.Heroes)
+                    {
+                        if (!h.IsAlive || !h.Body) continue;
+                        if (byId ? h.Id == id : h.Body.name.IndexOf(who, System.StringComparison.OrdinalIgnoreCase) >= 0) { found = h; break; }
+                    }
+                    if (found == null) throw new ConCommandException("No living hero '" + who + "'.");
+                    cam.FocusOn(found.Body.footPosition);
+                    break;
+                }
                 case "at":
                     cam.PanTo(new Vector3(args.GetArgFloat(1), cam.Focus.y, args.GetArgFloat(2)));
                     break;

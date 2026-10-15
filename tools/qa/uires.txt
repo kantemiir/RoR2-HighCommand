@@ -19,11 +19,18 @@ hc_cam army
 hc_cam dist 45
 hc_select all
 @wait 1
-@log === S2 4K: 1080p rendered twice as large
+@log === S2 4K: 1080p rendered twice as large (the panels and windows; the world's marks are not right in such a shot)
 hc_screenshot rs_4k 2
 @wait 1
-@log === S3 1280x720 (16:9, small)
+@log === S2b 2560x1440 in a window, larger than a 1080p screen if the system lets it (hc_ping tells the real size)
 window_mode Window
+resolution 2560x1440x60
+@wait 2
+hc_unpause
+@wait 1.5
+hc_ping
+hc_screenshot rs_1440
+@log === S3 1280x720 (16:9, small)
 resolution 1280x720x60
 @wait 2
 hc_unpause

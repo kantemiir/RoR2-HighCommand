@@ -1,0 +1,17 @@
+# The game's item card (InspectPanel) and the camera of the stock HUD (canvas mode, plane, UI camera's field of view).
+@wait 6
+@log === R1 the item card prefab
+hc_dump_ui "RoR2/Base/UI/InspectPanel.prefab" save
+@log === R2 a plain run: the stock HUD's canvas and camera
+transition_command "gamemode ClassicRun; host 0;"
+@scene lobby
+@wait 3
+pregame_start_run
+@run
+@wait 22
+hc_dump_ui live:HUD nosave 3
+@log === END
+disconnect
+@norun
+@wait 4
+@quit

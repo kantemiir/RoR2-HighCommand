@@ -176,7 +176,13 @@ namespace HighCommand.Dev
                         sb.Append($" alpha={cg.alpha}");
                         break;
                     case Canvas cv:
-                        sb.Append($" mode={cv.renderMode} order={cv.sortingOrder} pixelPerfect={cv.pixelPerfect}");
+                        sb.Append($" mode={cv.renderMode} order={cv.sortingOrder} pixelPerfect={cv.pixelPerfect} plane={cv.planeDistance:0.##}");
+                        if (cv.worldCamera)
+                        {
+                            Camera cam = cv.worldCamera;
+                            sb.Append($" camera={cam.name} ortho={cam.orthographic} fov={cam.fieldOfView:0.##} near={cam.nearClipPlane:0.##}"
+                                      + $" far={cam.farClipPlane:0.##} depth={cam.depth} mask={cam.cullingMask:X} layer={cv.gameObject.layer}");
+                        }
                         break;
                     case CanvasScaler cs:
                         sb.Append($" mode={cs.uiScaleMode} ref={V(cs.referenceResolution)} match={cs.matchWidthOrHeight}");

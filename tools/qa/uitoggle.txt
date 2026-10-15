@@ -1,0 +1,28 @@
+# The interface hidden and shown again (hc_ui off / on): nothing may fail or slow down after it comes back.
+@wait 4
+@log === H1 run start
+hc_start
+@scene lobby
+@wait 3
+pregame_start_run
+@run
+@wait 20
+hc_select all
+@wait 2
+hc_perf
+@wait 3
+hc_perf
+@log === H2 interface off
+hc_ui off
+@wait 3
+hc_perf
+@log === H3 interface on again
+hc_ui on
+@wait 3
+hc_perf
+hc_screenshot toggle_on
+@log === END
+disconnect
+@norun
+@wait 4
+@quit
