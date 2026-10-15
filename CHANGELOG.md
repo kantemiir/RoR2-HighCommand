@@ -18,10 +18,18 @@ Interface rebuilt in the look of the game's own HUD (style guide: `docs\dev\UI_S
   with the game's own pictures, and the barracks / items / hotkeys icons.
 * Windows in the game's dialog look: the barracks as the character select, the items as the scoreboard, the hotkey sheet;
   one window at a time, a click beside it closes it. Tooltips, messages and the defeat banner as the game draws them.
+* The corner clusters lean in as the stock HUD's do (6°, seen through a perspective camera set up as the game's UI
+  camera): the purse and the army top left, the minimap bottom left, the run panel top right, the orders and skills bottom
+  right. The marks in the world stay under the panels; windows, messages and tooltips over everything.
+* A click on an item (the item bar at the top or the item panel) opens the game's own item card: the big icon, the name
+  in its tier colour, the full description. Any click or Esc closes it; it does not pause the game.
 * The game's HUD scale setting applies to the mode's interface too (on top of `Interface/UiScale`). Checked at 1280x720,
-  1920x1080, 4K, 1440x1080 (4:3) and 1920x822 (21:9).
+  1920x1080, 4K, 1440x1080 (4:3), 1920x822 and 2560x1081 (ultrawide).
+* README screenshots retaken with the new interface.
 * Dev: `hc_dump_ui`, `hc_dump_skin`, `hc_dump_hbs`, `hc_dump_styles` (the game's interface), `hc_barrier`, `hc_unpause`,
-  `hc_screenshot <name> [factor]`; the old scene dump is `hc_dump_scene`; scenarios `uiaudit`, `uires`, `vanillaui`.
+  `hc_screenshot <name> [factor]`, `hc_ui_where` / `hc_mouse_ui` / `hc_click_ui <name> [n]` (a piece of the interface
+  by name, wherever the tilt puts it), `hc_cam hero <id|name>`; the old scene dump is `hc_dump_scene`; scenarios
+  `uiaudit`, `uires`, `hudtilt`, `uitoggle`, `vanillaui`.
   A running test script ignores the real mouse and keyboard; `qa-run.ps1` also keeps the game's own settings.
 
 ## 0.16.0 - heroes' AI rebuilt
