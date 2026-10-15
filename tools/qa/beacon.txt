@@ -30,7 +30,7 @@ hc_screenshot beacon_pop
 @wait 1.2
 hc_overlay
 hc_screenshot beacon_move
-@log === B2 Shift held: the line and the chevrons where a click would put the mark
+@log === B2 Shift held: the lines, no mark at the pointer
 hc_mouse 1450 820 shift
 @wait 1
 hc_cursor

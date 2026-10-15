@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+* Holding Shift no longer puts a mark (the chevrons and the light) under the pointer: Shift only shows the lines, the
+  mark comes with the click.
+
 ## 0.16.0 - heroes' AI rebuilt
 
 Heroes' AI rebuilt (details and measurements: `docs\dev\AI.md`)

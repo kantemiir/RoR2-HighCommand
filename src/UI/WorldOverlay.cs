@@ -358,15 +358,10 @@ namespace HighCommand.UI
                 if (cursor.Queued && brain != null) start = brain.ErrandsEnd(start);
                 DrawRoute(runner, RouteCache.Preview, start, cursor.Point, cursor.Color, RouteStyle.Preview, EndGap);
             }
-            // a place on the ground gets the chevrons where the click would put the mark (a target is marked by itself)
-            else if (cursor.Preview && cursor.HasPoint && previews > 0 && IsGroundGlyph(cursor.Glyph))
-                beacons.DrawPreview(cursor.Point, cursor.Color);
+            // no mark at the pointer itself (the user's call): Shift shows the ways, the mark comes with the click
 
             DrawEdgeTargets();
         }
-
-        private static bool IsGroundGlyph(Glyph glyph) =>
-            glyph == Glyph.Move || glyph == Glyph.AttackMove || glyph == Glyph.Patrol;
 
         // the thing an order is about (its mark hangs over it), none for a place on the ground
         private static GameObject TargetOf(Orders.Order order, Orders.OrderKind kind)

@@ -165,19 +165,6 @@ namespace HighCommand.UI
             }
         }
 
-        /// <summary>Where a click would send the heroes (Shift held): the chevrons and the light on the ground, no picture.</summary>
-        internal void DrawPreview(Vector3 point, Color color)
-        {
-            if (!cam || !WorldPicker.ProjectPoint(cam, point, out Vector2 s) || !WorldPicker.IsOnScreen(s)) return;
-            float now = Time.unscaledTime;
-            float flat = Flatness();
-            Img(GameArt.Glow, s, new Vector2(40f, 40f * flat), Fade(color, 0.55f));
-            float lift = 28f + Mathf.Sin(now * 4f) * 2.5f;
-            Vector2 top = s + new Vector2(0f, lift * scale);
-            Img(Beam, s, new Vector2(3f, lift), Fade(Color.Lerp(color, Color.white, 0.5f), 0.7f), pivotY: 0f);
-            Img(GameArt.Chevron, top, new Vector2(27f, 27f), Fade(color, 0.85f));
-        }
-
         // ---- one mark ---------------------------------------------------------------------------
 
         private void DrawBeacon(Beacon b, float now)
