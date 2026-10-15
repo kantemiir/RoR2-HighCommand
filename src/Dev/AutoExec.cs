@@ -50,6 +50,8 @@ namespace HighCommand.Dev
             catch (Exception e) { Plugin.Log.LogError("AutoExec: cannot read script: " + e.Message); yield break; }
 
             Plugin.Log.LogInfo($"AutoExec: running {lines.Length} lines");
+            // the script's own input only: a hand on the mouse must not click into the run being checked
+            Client.ClientInput.ScriptedOnly = true;
             foreach (string raw in lines)
             {
                 string line = raw.Trim();
@@ -119,6 +121,7 @@ namespace HighCommand.Dev
                         break;
                 }
             }
+            Client.ClientInput.ScriptedOnly = false;
             Plugin.Log.LogInfo("AutoExec: script finished");
         }
     }

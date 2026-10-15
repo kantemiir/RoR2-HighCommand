@@ -1,0 +1,43 @@
+# The game's own interface as a reference for the mode's look: styles, skins, prefabs (textures saved to
+# screenshots\ui), then a plain Risk of Rain 2 run with its HUD on screen (vanilla_*.png) and the live HUD dumped.
+@wait 6
+@log === R1 text styles and skins
+hc_dump_styles
+hc_dump_skin "RoR2/Base/UI/skinMenu.asset"
+hc_dump_skin "RoR2/Base/UI/skinObjectivePanel.asset"
+hc_dump_skin "RoR2/Base/UI/skinCleanButton.asset"
+hc_dump_skin "RoR2/Base/UI/skinCleanButtonColored.asset"
+hc_dump_skin "RoR2/Base/UI/skinNakedButton.asset"
+hc_dump_skin "RoR2/Base/UI/skinThinStrips.asset"
+hc_dump_skin "RoR2/Base/UI/skinWarning.asset"
+hc_dump_skin "RoR2/Base/UI/skinTitleHeaderButtons.asset"
+hc_dump_skin "RoR2/Base/UI/skinPaintStreakButtons.asset"
+hc_dump_skin "RoR2/Base/UI/skinSurvivorSelect.asset"
+hc_dump_hbs "RoR2/Base/Common/HUDHealthBar.asset"
+hc_dump_hbs "RoR2/Base/Common/CombatHealthBarAlly.asset"
+@log === R2 prefabs
+hc_dump_ui "RoR2/Base/UI/Tooltip.prefab" save
+hc_dump_ui "RoR2/Base/UI/AllyCard.prefab" save
+hc_dump_ui "RoR2/Base/UI/NotificationPanel2.prefab" save
+hc_dump_ui "RoR2/Base/UI/GenericMenuButton.prefab" save
+hc_dump_ui "RoR2/Base/UI/DefaultPanel.prefab" save
+hc_dump_ui "RoR2/Base/UI/ItemIcon.prefab" save
+hc_dump_ui "RoR2/Base/UI/SkillDisplay.prefab" save
+hc_dump_ui "RoR2/Base/UI/HUDSimple.prefab" save
+@log === R3 a plain run
+transition_command "gamemode ClassicRun; host 0;"
+@scene lobby
+@wait 3
+pregame_start_run
+@run
+@wait 22
+hc_screenshot vanilla_hud
+@log === R4 live HUD
+hc_dump_ui live:HUD save
+@wait 8
+hc_screenshot vanilla_hud2
+@log === END
+disconnect
+@norun
+@wait 4
+@quit

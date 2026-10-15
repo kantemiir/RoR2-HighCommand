@@ -1,0 +1,26 @@
+# More of the game's interface as a reference: windows, the scoreboard, pickers; the pause menu of a plain run.
+@wait 6
+@log === R5 windows and lists
+hc_dump_ui "RoR2/Base/UI/ScoreboardStrip.prefab" save
+hc_dump_ui "RoR2/Base/UI/ItemIconScoreboard_InGame.prefab" save
+hc_dump_ui "RoR2/Base/UI/SimpleDialogRoot.prefab" save
+hc_dump_ui "RoR2/Base/Command/CommandPickerPanel.prefab" save
+hc_dump_ui "RoR2/Base/UI/PauseScreen.prefab" save 6
+hc_dump_ui "RoR2/Base/UI/SurvivorEntryIcon.prefab" save
+@log === R6 a plain run, pause menu
+transition_command "gamemode ClassicRun; host 0;"
+@scene lobby
+@wait 3
+pregame_start_run
+@run
+@wait 14
+pause
+@wait 2
+hc_screenshot vanilla_pause
+pause
+@wait 1
+@log === END
+disconnect
+@norun
+@wait 4
+@quit

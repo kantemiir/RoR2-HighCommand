@@ -26,6 +26,16 @@ if (Test-Path $cfgBackup) {
 $hadCfg = Test-Path $cfg
 if ($hadCfg) { [System.IO.File]::Copy($cfg, $cfgBackup) }
 
+# the game's own settings (resolution, window mode, HUD scale, language): scenarios that test other screens change
+# them, and the game saves them on exit
+$gameCfg = Join-Path $game "Risk of Rain 2_Data\Config\config.cfg"
+$gameCfgBackup = $gameCfg + ".qa-backup"
+if (Test-Path $gameCfgBackup) {
+    throw "A backup of the game's settings is left over from an interrupted run: $gameCfgBackup. Copy it over $gameCfg, delete it, then run again."
+}
+$hadGameCfg = Test-Path $gameCfg
+if ($hadGameCfg) { [System.IO.File]::Copy($gameCfg, $gameCfgBackup) }
+
 try {
     if ($hadCfg) { [System.IO.File]::Delete($cfg) }
 
@@ -47,6 +57,10 @@ try {
         [System.IO.File]::Delete($cfgBackup)
     } elseif (Test-Path $cfg) {
         [System.IO.File]::Delete($cfg)
+    }
+    if ($hadGameCfg) {
+        [System.IO.File]::Copy($gameCfgBackup, $gameCfg, $true)
+        [System.IO.File]::Delete($gameCfgBackup)
     }
 }
 

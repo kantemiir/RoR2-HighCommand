@@ -67,6 +67,14 @@ namespace HighCommand.Client
         /// <summary>Is synthetic input active (the real mouse position is ignored).</summary>
         internal static bool Synthetic => fakeMouse.HasValue;
 
+        /// <summary>
+        /// A test script is running (AutoExec): only its synthetic input counts, so a hand on the real mouse or keyboard
+        /// cannot click or type into the run being checked.
+        /// </summary>
+        internal static bool ScriptedOnly;
+
+        private static readonly Vector2 Nowhere = new Vector2(-10000f, -10000f);
+
         internal static void InjectClick(Vector2 at, int button = 0, bool shift = false, bool ctrl = false)
         {
             track = null;
@@ -189,8 +197,8 @@ namespace HighCommand.Client
 
             if (swallowed >= 0 && !RawMouseHeld(swallowed) && !RawMouseUp(swallowed)) swallowed = -1;
 
-            Mouse = fakeMouse ?? (Vector2)Input.mousePosition;
-            PointerInWindow = fakeMouse.HasValue || (Application.isFocused
+            Mouse = fakeMouse ?? (ScriptedOnly ? Nowhere : (Vector2)Input.mousePosition);
+            PointerInWindow = fakeMouse.HasValue || (!ScriptedOnly && Application.isFocused
                               && Mouse.x >= 0f && Mouse.y >= 0f && Mouse.x <= Screen.width - 1 && Mouse.y <= Screen.height - 1);
 
             // The pause screen and the console own both devices; the chat window owns the keyboard only.
@@ -229,14 +237,16 @@ namespace HighCommand.Client
             return RawMouseHeld(button);
         }
 
-        private static bool RawMouseDown(int button) => fakeMouse.HasValue ? fakeDown == button : Input.GetMouseButtonDown(button);
+        private static bool RawMouseDown(int button) =>
+            fakeMouse.HasValue ? fakeDown == button : !ScriptedOnly && Input.GetMouseButtonDown(button);
 
-        private static bool RawMouseUp(int button) => fakeMouse.HasValue ? fakeUp == button : Input.GetMouseButtonUp(button);
+        private static bool RawMouseUp(int button) =>
+            fakeMouse.HasValue ? fakeUp == button : !ScriptedOnly && Input.GetMouseButtonUp(button);
 
         private static bool RawMouseHeld(int button)
         {
             if (fakeMouse.HasValue) return button == 0 ? fakeButton0 : button == 1 ? fakeButton1 : fakeButton2;
-            return Input.GetMouseButton(button);
+            return !ScriptedOnly && Input.GetMouseButton(button);
         }
 
         // a press that only closed something (an open list) must not also act in the world: hidden until released
@@ -245,29 +255,32 @@ namespace HighCommand.Client
         /// <summary>The press of <paramref name="button"/> going on now is used up: nobody else sees it until it is released.</summary>
         internal static void Swallow(int button) => swallowed = button;
 
-        internal static float Scroll => MouseBlocked ? 0f : fakeMouse.HasValue ? fakeScroll : Input.mouseScrollDelta.y;
+        internal static float Scroll => MouseBlocked ? 0f : fakeMouse.HasValue || ScriptedOnly ? fakeScroll : Input.mouseScrollDelta.y;
 
         /// <summary>Raw key state, ignoring the blocked gate (callers that need the gate use <see cref="Key"/>).</summary>
         internal static bool RawKey(KeyCode key)
         {
             if (fakeKeyHeld == key && key != KeyCode.None) return true;
-            return Input.GetKey(key);
+            return !ScriptedOnly && Input.GetKey(key);
         }
 
         internal static bool RawKeyDown(KeyCode key)
         {
             if (fakeKeyDown == key && key != KeyCode.None) return true;
-            return Input.GetKeyDown(key);
+            return !ScriptedOnly && Input.GetKeyDown(key);
         }
+
+        /// <summary>A key pressed by a test command this frame (the real keyboard does not count).</summary>
+        internal static bool InjectedKeyDown(KeyCode key) => key != KeyCode.None && fakeKeyDown == key;
 
         internal static bool Key(KeyCode key) => !KeyboardBlocked && RawKey(key);
 
         internal static bool KeyDown(KeyCode key) => !KeyboardBlocked && RawKeyDown(key);
 
-        internal static bool Ctrl => fakeCtrl || Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+        internal static bool Ctrl => fakeCtrl || (!ScriptedOnly && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)));
 
-        internal static bool Shift => fakeShift || Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+        internal static bool Shift => fakeShift || (!ScriptedOnly && (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)));
 
-        internal static bool Alt => fakeAlt || Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt);
+        internal static bool Alt => fakeAlt || (!ScriptedOnly && (Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt)));
     }
 }
