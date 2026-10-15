@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.16.0 - heroes' AI rebuilt
 
 Heroes' AI rebuilt (details and measurements: `docs\dev\AI.md`)
 * Obedient: move orders are done at once and to the point (reaction about 0.4 s; in the test 18 of 18 move orders and
