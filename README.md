@@ -19,6 +19,22 @@ artifacts. It just plays very differently when you are the one holding the map.
 
 ---
 
+## New in 0.17.0: an interface that looks like Risk of Rain 2
+
+The first versions had a home-made interface: chamfered panels with orange corners, green glowing cards, a drop-down
+list of orders. In 0.17.0 every panel was rebuilt from the game's own HUD: its frames, plates, fonts, colours, sounds,
+tooltips and even its tilt (the corner panels lean in, as in the vanilla HUD). The army looks like the ally list, the
+selected hero's skills look like your own skill bar, every order is an icon with its hotkey, and the run's timer,
+difficulty and objectives are the game's own panel.
+
+![Before and after: the HUD in a fight, 0.11.0 against 0.17.0](https://raw.githubusercontent.com/kantemiir/RoR2-HighCommand/master/docs/screenshots/compare-battle.jpg)
+
+![Before and after: the barracks](https://raw.githubusercontent.com/kantemiir/RoR2-HighCommand/master/docs/screenshots/compare-barracks.jpg)
+
+![Before and after: the item panel](https://raw.githubusercontent.com/kantemiir/RoR2-HighCommand/master/docs/screenshots/compare-items.jpg)
+
+---
+
 ## What you get
 
 ### Command an army of survivors

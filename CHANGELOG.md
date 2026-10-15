@@ -1,11 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.17.0 - the interface in the game's own HUD look
 
-* Holding Shift no longer puts a mark (the chevrons and the light) under the pointer: Shift only shows the lines, the
-  mark comes with the click.
-
-Interface rebuilt in the look of the game's own HUD (style guide: `docs\dev\UI_STYLE.md`)
+Interface rebuilt in the look of the game's own HUD (style guide: `docs\dev\UI_STYLE.md`; before / after pictures
+against 0.11.0: `docs\screenshots\compare-*.jpg`)
 * The mode's panels use the stock HUD's own frames, plates, outlines, hover frames, cooldown picture, checkboxes, icons,
   fonts, colours and sounds instead of drawn chamfered panels with orange ticks and glowing tiles.
 * Top left: the gold as the stock money box (counts up with the coin sound), the army and the next hero's price under
@@ -25,7 +23,13 @@ Interface rebuilt in the look of the game's own HUD (style guide: `docs\dev\UI_S
   in its tier colour, the full description. Any click or Esc closes it; it does not pause the game.
 * The game's HUD scale setting applies to the mode's interface too (on top of `Interface/UiScale`). Checked at 1280x720,
   1920x1080, 4K, 1440x1080 (4:3), 1920x822 and 2560x1081 (ultrawide).
-* README screenshots retaken with the new interface.
+* README screenshots retaken with the new interface, with before / after pictures against the first release.
+* Fixes: barrier on the army cards drawn as a thin strip (it was a tall yellow box); "Defeat the boss!" listed once;
+  no auto-use checkbox on an empty equipment slot; hotkey plates visible in the hotkey sheet.
+
+Also
+* Holding Shift no longer puts a mark (the chevrons and the light) under the pointer: Shift only shows the lines, the
+  mark comes with the click.
 * Dev: `hc_dump_ui`, `hc_dump_skin`, `hc_dump_hbs`, `hc_dump_styles` (the game's interface), `hc_barrier`, `hc_unpause`,
   `hc_screenshot <name> [factor]`, `hc_ui_where` / `hc_mouse_ui` / `hc_click_ui <name> [n]` (a piece of the interface
   by name, wherever the tilt puts it), `hc_cam hero <id|name>`; the old scene dump is `hc_dump_scene`; scenarios

@@ -19,6 +19,22 @@ High Command превращает Risk of Rain 2 в стратегию в реа
 
 ---
 
+## Новое в 0.17.0: интерфейс, как у самой Risk of Rain 2
+
+В первых версиях интерфейс был самодельным: скошенные панели с оранжевыми уголками, зелёные светящиеся карточки,
+выпадающий список приказов. В 0.17.0 каждая панель собрана заново из деталей родного HUD игры: его рамки, плашки, шрифты,
+цвета, звуки, подсказки и даже наклон (угловые панели повёрнуты, как в обычном HUD). Армия выглядит как список
+союзников, умения выбранного героя — как ваша панель умений, каждый приказ — значок со своей клавишей, а таймер,
+сложность и цели — родная панель забега.
+
+![До и после: интерфейс в бою, 0.11.0 и 0.17.0](https://raw.githubusercontent.com/kantemiir/RoR2-HighCommand/master/docs/screenshots/compare-battle.jpg)
+
+![До и после: казарма](https://raw.githubusercontent.com/kantemiir/RoR2-HighCommand/master/docs/screenshots/compare-barracks.jpg)
+
+![До и после: панель предметов](https://raw.githubusercontent.com/kantemiir/RoR2-HighCommand/master/docs/screenshots/compare-items.jpg)
+
+---
+
 ## Что внутри
 
 ### Армия выживших под вашим командованием
