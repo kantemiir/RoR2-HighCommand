@@ -83,6 +83,11 @@ namespace HighCommand.UI
         internal const float TooltipWidth = 400f;
         internal const float TooltipPad = 12f;
 
+        // ---- the stock HUD's depth: its corner clusters lean in round their corner, seen by a perspective camera ----
+        internal const float ClusterTilt = 6f;          // degrees round the vertical axis (left -6, right +6)
+        internal const float HudCameraFov = 60f;        // the game's UI camera
+        internal const float HudPlaneDistance = 12.35f; // its HUD canvas, in front of that camera
+
         // ---- motion -----------------------------------------------------------------------------------------
         internal const float HoverIn = 0.06f;        // the hover outline settles (HGButton: SmoothDamp 0.03 s)
         internal const float HoverScale = 1.1f;

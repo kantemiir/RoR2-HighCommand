@@ -13,8 +13,9 @@ namespace HighCommand.UI
     /// <summary>
     /// "Who carries what", laid out as the stock scoreboard (Tab): one slate strip per hero with the portrait in a dark
     /// box, the name, the items in a long dark box and the equipment in its own box. Drag an item (Shift: the whole
-    /// stack) onto another hero's strip to hand it over; drag equipment to swap; under the strips the spare equipment and
-    /// a button that deals everything out again by role. Reads the heroes' inventories, which the game replicates.
+    /// stack) onto another hero's strip to hand it over; drag equipment to swap; a click opens the game's item card. Under
+    /// the strips the spare equipment and a button that deals everything out again by role. Reads the heroes'
+    /// inventories, which the game replicates.
     /// </summary>
     internal sealed class InventoryPanel
     {
@@ -90,6 +91,11 @@ namespace HighCommand.UI
         private int dragSpareIndex = -1;
         private Hero dragFrom;
         private int dragCount;
+        private Vector2 dragStart;
+        private bool dragMoved;
+
+        // a press that ends within this many pixels of where it began is a click (it opens the item's card), not a drag
+        private const float ClickSlop = 6f;
 
         internal bool Visible => window.Visible;
 
@@ -497,6 +503,13 @@ namespace HighCommand.UI
             if (!dragging && hovered != null && ClientInput.MouseDown(0)) BeginDrag(hovered);
             if (dragging)
             {
+                // the ghost comes out once the pointer leaves the spot: a click alone never shows it
+                if (!dragMoved && (mouse - dragStart).sqrMagnitude > ClickSlop * ClickSlop)
+                {
+                    dragMoved = true;
+                    ghost.gameObject.SetActive(true);
+                    ghost.SetAsLastSibling();
+                }
                 PlaceGhost(mouse);
                 if (!ClientInput.MouseHeld(0) || ClientInput.MouseUp(0)) EndDrag(mouse);
             }
@@ -621,6 +634,7 @@ namespace HighCommand.UI
                 tipTitle = Language.GetString(def.nameToken);
                 tipBody = Language.GetString(def.pickupToken);
                 if (n > 0) tipBody += "\n\n<style=cSub>" + Loc.Format("HIGHCOMMAND_INV_COUNT", n) + "</style>";
+                tipBody += "\n" + Tooltip.KeyHint(Loc.Get("HIGHCOMMAND_KEY_CLICK")) + " <style=cSub>" + Loc.Get("HIGHCOMMAND_ITEM_CARD") + "</style>";
                 tipBar = def.darkColor;
             }
             Tooltip.Show(tipTitle, tipBody, tipBar);
@@ -645,9 +659,9 @@ namespace HighCommand.UI
             PickupDef def = dragItem != ItemIndex.None ? PickupOf(dragItem) : PickupOf(dragEquipment);
             PickupIcons.Apply(ghostIcon, def);
             ghostCount.text = dragCount > 1 ? "x" + dragCount : "";
-            ghost.gameObject.SetActive(true);
-            ghost.SetAsLastSibling();
-            PlaceGhost(ClientInput.Mouse);
+            dragStart = ClientInput.Mouse;
+            dragMoved = false;
+            PlaceGhost(dragStart);
         }
 
         private void PlaceGhost(Vector2 mouse)
@@ -660,11 +674,21 @@ namespace HighCommand.UI
         private void CancelDrag()
         {
             dragging = false;
+            dragMoved = false;
             if (ghost) ghost.gameObject.SetActive(false);
         }
 
         private void EndDrag(Vector2 mouse)
         {
+            if (!dragMoved && (mouse - dragStart).sqrMagnitude <= ClickSlop * ClickSlop)
+            {
+                // a click: the item's card, as a click on an item of the stock scoreboard
+                if (dragItem != ItemIndex.None) ItemCard.Show(dragItem);
+                else ItemCard.Show(dragEquipment);
+                CancelDrag();
+                return;
+            }
+
             Hero target = null;
             foreach (Row r in rows)
                 if (UiKit.Contains(r.root, mouse)) { target = r.hero; break; }

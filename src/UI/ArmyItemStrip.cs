@@ -11,8 +11,8 @@ namespace HighCommand.UI
     /// <summary>
     /// Top centre, where the stock HUD shows the player's items: the army's items as the stock item display draws them
     /// (bare icons in rows from the middle, the stack as "x3" in the corner, smaller icons when the rows fill up). The
-    /// stock display itself needs a HUD above it; this one follows the army's pool through its change event. A click
-    /// opens the item panel.
+    /// stock display itself needs a HUD above it; this one follows the army's pool through its change event. A click on
+    /// an item opens the game's item card.
     /// </summary>
     internal sealed class ArmyItemStrip
     {
@@ -57,8 +57,15 @@ namespace HighCommand.UI
             if (root.gameObject.activeSelf != visible) root.gameObject.SetActive(visible);
         }
 
-        /// <summary>Over one of the item icons (a click opens the item panel).</summary>
+        /// <summary>Over one of the item icons.</summary>
         internal bool Contains(Vector2 screenPoint) => HoveredCell(screenPoint) != null;
+
+        /// <summary>The item under the point (a click there opens its card), or none.</summary>
+        internal ItemIndex ItemAt(Vector2 screenPoint)
+        {
+            Cell c = HoveredCell(screenPoint);
+            return c != null ? c.item : ItemIndex.None;
+        }
 
         internal void Destroy()
         {
@@ -188,7 +195,8 @@ namespace HighCommand.UI
                 tipTitle = Language.GetString(def.nameToken);
                 tipBody = Language.GetString(def.pickupToken);
                 if (count > 1) tipBody += "\n\n<style=cSub>" + Loc.Format("HIGHCOMMAND_ITEMS_ARMY_COUNT", count) + "</style>";
-                tipBody += "\n" + Tooltip.KeyHint(UiKit.KeyText(Settings.KeyInventory.Value)) + " <style=cSub>" + Loc.Get("HIGHCOMMAND_ITEMS_OPEN") + "</style>";
+                tipBody += "\n" + Tooltip.KeyHint(Loc.Get("HIGHCOMMAND_KEY_CLICK")) + " <style=cSub>" + Loc.Get("HIGHCOMMAND_ITEM_CARD") + "</style>  "
+                           + Tooltip.KeyHint(UiKit.KeyText(Settings.KeyInventory.Value)) + " <style=cSub>" + Loc.Get("HIGHCOMMAND_ITEMS_OPEN") + "</style>";
                 tipBar = pickup != null ? pickup.darkColor : (Color?)null;
             }
             Tooltip.Show(tipTitle, tipBody, tipBar);

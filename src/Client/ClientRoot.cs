@@ -27,7 +27,11 @@ namespace HighCommand.Client
 
         internal OrderController Orders => orders;
 
-        private Canvas canvas;
+        internal HudLayers Layers => layers;
+
+        private HudLayers layers;
+        private Canvas canvas;   // the top canvas: windows, the item card, messages, the tooltip
+        private ItemCardView itemCard;
         private Minimap minimap;
         private HelpOverlay help;
         private WorldOverlay overlay;
@@ -59,30 +63,30 @@ namespace HighCommand.Client
             Camera = gameObject.AddComponent<RtsCamera>();
             Selection = new Selection();
 
-            canvas = UiKit.CreateCanvas("HighCommand.UI", 100);
-            canvas.transform.SetParent(transform, false);
-            canvasGroup = canvas.gameObject.AddComponent<CanvasGroup>();
+            layers = new HudLayers(transform, 100);
+            canvas = layers.Top;
             canvas.gameObject.AddComponent<MPEventSystemProvider>();
             canvas.gameObject.AddComponent<MPEventSystemLocator>();
             // The stock cursor opener shows the OS-confined mouse cursor the same way menus do.
             canvas.gameObject.AddComponent<CursorOpener>();
 
             HudArt.Preload();
-            overlay = new WorldOverlay(canvas.transform);   // first: it draws underneath the panels
-            // the HUD in the stock HUD's places: minimap, purse, run panel, items, army, orders, abilities
-            minimap = new Minimap(canvas.transform);
-            purse = new PurseCluster(canvas.transform);
-            runPanel = new RunPanel(canvas.transform);
-            itemStrip = new ArmyItemStrip(canvas.transform);
-            roster = new RosterPanel(canvas.transform);
-            commandCard = new CommandCard(canvas.transform);
-            abilityBar = new AbilityBar(canvas.transform);
-            lootFeed = new LootFeed(canvas.transform);
+            overlay = new WorldOverlay(layers.World.transform);   // its own canvas, under the panels
+            // the HUD in the stock HUD's places, the corner clusters leaning in as the stock ones do
+            minimap = new Minimap(layers.LowerLeft);
+            purse = new PurseCluster(layers.UpperLeft);
+            roster = new RosterPanel(layers.UpperLeft);
+            runPanel = new RunPanel(layers.UpperRight);
+            lootFeed = new LootFeed(layers.UpperRight);
+            commandCard = new CommandCard(layers.LowerRight);
+            itemStrip = new ArmyItemStrip(layers.Hud.transform);
+            abilityBar = new AbilityBar(layers.Hud.transform);
+            // over the HUD: the defeat strip, the windows, the item card, the messages and the tooltip above everything
             defeat = new DefeatBanner(canvas.transform);
-            // the windows above the HUD, the messages and the tooltip above everything
             barracks = new BarracksPanel(canvas.transform);
             inventory = new InventoryPanel(canvas.transform);
             help = new HelpOverlay(canvas.transform);
+            itemCard = new ItemCardView(canvas.transform);
             toast = new ToastView(canvas.transform);
             tooltip = new TooltipView(canvas.transform);
             selectionController = new SelectionController(Selection, overlay);
@@ -115,10 +119,13 @@ namespace HighCommand.Client
             abilityBar?.Destroy();
             barracks?.Destroy();
             inventory?.Destroy();
+            itemCard?.Destroy();
             tooltip?.Destroy();
             lootFeed?.Destroy();
             toast?.Destroy();
+            layers?.Destroy();
             Toast.Clear();
+            ItemCard.Clear();
             Feedback.Pings.Clear();
             Feedback.Popups.Clear();
             if (Instance == this) Instance = null;
@@ -177,11 +184,12 @@ namespace HighCommand.Client
         internal static bool EscapeGuardActive;
 
         /// <summary>
-        /// Esc closes the topmost thing of the mode: a pending targeting mode, the help sheet, the item panel or the
-        /// recruiting panel. Returns true when something was closed (then the game must not open its pause menu).
+        /// Esc closes the topmost thing of the mode: the item card, a pending targeting mode, the help sheet, the item panel
+        /// or the recruiting panel. Returns true when something was closed (then the game must not open its pause menu).
         /// </summary>
         internal bool ConsumeEscape()
         {
+            if (itemCard != null && itemCard.Visible) { itemCard.Hide(); return true; }
             if (orders != null && orders.Mode != OrderController.Pending.None) { orders.CancelMode(); return true; }
             if (help != null && help.Visible) { help.Hide(); return true; }
             if (inventory != null && inventory.Visible) { inventory.Hide(); return true; }
@@ -196,10 +204,9 @@ namespace HighCommand.Client
         internal string Describe()
         {
             return $"mode={orders.Mode} help={help.Visible} barracks={barracks.Visible} inventory={inventory.Visible} " +
+                   $"card={(itemCard.Visible ? itemCard.ShownName : "none")} " +
                    $"selected={Selection.Count} scale={appliedUiScale:0.00} screen={Screen.width}x{Screen.height}";
         }
-
-        private CanvasGroup canvasGroup;
 
         private float appliedUiScale = -1f;
         private float hudScale = 1f;
@@ -217,8 +224,7 @@ namespace HighCommand.Client
             float scale = Mathf.Clamp(Settings.UiScale.Value * hudScale, 0.5f, 1.8f);
             if (Mathf.Approximately(scale, appliedUiScale)) return;
             appliedUiScale = scale;
-            var scaler = canvas ? canvas.GetComponent<UnityEngine.UI.CanvasScaler>() : null;
-            if (scaler) scaler.referenceResolution = new Vector2(1920f, 1080f) / scale;
+            layers.SetReferenceResolution(new Vector2(1920f, 1080f) / scale);
         }
 
         private static float GameHudScale()
@@ -235,10 +241,7 @@ namespace HighCommand.Client
         }
 
         /// <summary>Testing: hides / shows the whole interface (measures what drawing it costs).</summary>
-        internal void SetUiHidden(bool hidden)
-        {
-            if (canvas) canvas.gameObject.SetActive(!hidden);
-        }
+        internal void SetUiHidden(bool hidden) => layers.SetHidden(hidden);
 
         private void OnStageStart(Stage stage)
         {
@@ -291,13 +294,13 @@ namespace HighCommand.Client
             Dev.Perf.Frame();
             ClientInput.Refresh();
             ApplyUiScale();
+            layers.Tick();
 
             // The pause screen and the console are drawn below this canvas. The pause menu and its settings fill the
             // screen: the mode's interface is hidden while they are up (dimmed, it still covered their tabs and rows).
             // The console is a small window: the interface is only dimmed under it.
             bool pauseMenu = PauseManager.isPaused || PauseManager.PauseScreenIsOpen();
-            float wantAlpha = pauseMenu ? 0f : ClientInput.MouseBlocked ? 0.35f : 1f;
-            if (canvasGroup && !Mathf.Approximately(canvasGroup.alpha, wantAlpha)) canvasGroup.alpha = wantAlpha;
+            layers.SetAlpha(pauseMenu ? 0f : ClientInput.MouseBlocked ? 0.35f : 1f);
 
             // The map picture is built once the stage's node graph exists.
             if (mapDirty && SceneInfo.instance && SceneInfo.instance.groundNodes)
@@ -327,6 +330,17 @@ namespace HighCommand.Client
             if ((!EscapeGuardActive && ClientInput.RawKeyDown(KeyCode.Escape) && !ClientInput.KeyboardBlocked)
                 || ClientInput.InjectedKeyDown(KeyCode.Escape)) ConsumeEscape();
 
+            // The item card is read, not used: any press closes it and does nothing else (as a click beside a window).
+            if (itemCard.Visible)
+            {
+                for (int b = 0; b < 2; b++)
+                {
+                    if (!ClientInput.MouseDown(b)) continue;
+                    itemCard.Hide();
+                    ClientInput.Swallow(b);
+                }
+            }
+
             if (ClientInput.KeyDown(Settings.KeyHelp.Value)) Open(WindowKind.Help);
             if (inStage)
             {
@@ -336,8 +350,9 @@ namespace HighCommand.Client
                 if (ClientInput.MouseDown(0))
                 {
                     Vector2 at = ClientInput.Mouse;
+                    ItemIndex item = itemStrip.ItemAt(at);
                     if (purse.Contains(at)) Open(WindowKind.Barracks);
-                    else if (itemStrip.Contains(at)) Open(WindowKind.Items);
+                    else if (item != ItemIndex.None) ItemCard.Show(item);
                     else if (runPanel.ObjectivesContain(at)) orders.TeleporterAction();
                     else if (defeat.Contains(at)) orders.Revive(null);
                 }
@@ -346,6 +361,7 @@ namespace HighCommand.Client
             {
                 barracks.Hide();
                 inventory.Hide();
+                itemCard.Hide();
             }
 
             // A click beside an open window, in the world, only closes it, as in any menu: it would also have deselected
@@ -397,6 +413,7 @@ namespace HighCommand.Client
             try { barracks.Tick(); } catch (Exception e) { Failed(PanelBarracks, e); }
             try { inventory.Tick(); } catch (Exception e) { Failed(PanelInventory, e); }
             try { help.Tick(); } catch (Exception e) { Failed(PanelHelp, e); }
+            try { itemCard.Tick(); } catch (Exception e) { Failed(PanelItemCard, e); }
             Dev.Perf.End(ref Dev.Perf.Part[Dev.Perf.PartOther], t);
 
             t = Dev.Perf.Begin();
@@ -423,7 +440,9 @@ namespace HighCommand.Client
             }
             catch (Exception e) { Failed(PanelLoot, e); }
             try { toast.Tick(); } catch (Exception e) { Failed(PanelToast, e); }
-            if (ClientInput.MouseBlocked) Tooltip.Clear(); // a pause screen or the console is on top: no tooltips
+            // a pause screen, the console or the item card is on top: no tooltips of what lies under them (the card already
+            // tells everything about the item the pointer is still on)
+            if (ClientInput.MouseBlocked || itemCard.Visible) Tooltip.Clear();
             try { tooltip.Tick(); } catch (Exception e) { Failed(PanelTooltip, e); } // last: shows what the panels asked for
             Dev.Perf.End(ref Dev.Perf.Part[Dev.Perf.PartOther], t);
             Dev.Perf.End(ref Dev.Perf.Ui, perfStart);
@@ -459,14 +478,16 @@ namespace HighCommand.Client
         // the HUD pieces that have no hit test of their own: a click on them must not reach the world
         private bool HudContains(Vector2 point) =>
             purse.Contains(point) || itemStrip.Contains(point) || runPanel.ObjectivesContain(point) || defeat.Contains(point)
-            || help.Contains(point);
+            || help.Contains(point) || itemCard.Contains(point);
 
         // ---- one failing panel does not take the rest down -------------------------------------------------------
 
         private const int PanelPurse = 0, PanelRun = 1, PanelItems = 2, PanelDefeat = 3, PanelBarracks = 4, PanelInventory = 5,
-            PanelHelp = 6, PanelRoster = 7, PanelCommand = 8, PanelAbilities = 9, PanelLoot = 10, PanelToast = 11, PanelTooltip = 12;
+            PanelHelp = 6, PanelRoster = 7, PanelCommand = 8, PanelAbilities = 9, PanelLoot = 10, PanelToast = 11, PanelTooltip = 12,
+            PanelItemCard = 13;
         private static readonly string[] PanelNames =
-            { "purse", "run panel", "items", "defeat", "barracks", "inventory", "help", "roster", "command card", "abilities", "loot feed", "toast", "tooltip" };
+            { "purse", "run panel", "items", "defeat", "barracks", "inventory", "help", "roster", "command card", "abilities", "loot feed",
+              "toast", "tooltip", "item card" };
         private readonly bool[] panelFailed = new bool[PanelNames.Length];
 
         private void Failed(int panel, Exception e)

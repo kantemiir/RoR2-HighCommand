@@ -261,6 +261,8 @@ namespace HighCommand
             Loc.Add("HIGHCOMMAND_TOP_ITEMS", "Items", "Предметы");
             Loc.Add("HIGHCOMMAND_ITEMS_ARMY_COUNT", "The army has {0}.", "У армии: {0}.");
             Loc.Add("HIGHCOMMAND_ITEMS_OPEN", "who carries what", "у кого что");
+            Loc.Add("HIGHCOMMAND_KEY_CLICK", "Click", "Клик");
+            Loc.Add("HIGHCOMMAND_ITEM_CARD", "item card", "карточка предмета");
             Loc.Add("HIGHCOMMAND_OBJ_TP_ACTIVATE", "activate", "запустить");
             Loc.Add("HIGHCOMMAND_OBJ_TP_GATHER", "gather", "собрать");
             Loc.Add("HIGHCOMMAND_OBJ_TP_LEAVE", "leave the stage", "уйти с этапа");

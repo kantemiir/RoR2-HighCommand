@@ -328,6 +328,7 @@ namespace HighCommand.UI
         internal static RectTransform NewRect(string name, Transform parent)
         {
             var go = new GameObject(name, typeof(RectTransform));
+            if (parent) go.layer = parent.gameObject.layer;   // a camera canvas is drawn by a camera that sees its layer
             var rt = (RectTransform)go.transform;
             rt.SetParent(parent, false);
             return rt;
@@ -448,7 +449,25 @@ namespace HighCommand.UI
 
         internal static bool Contains(RectTransform rt, Vector2 screenPoint)
         {
-            return rt && rt.gameObject.activeInHierarchy && RectTransformUtility.RectangleContainsScreenPoint(rt, screenPoint, null);
+            return rt && rt.gameObject.activeInHierarchy && RectTransformUtility.RectangleContainsScreenPoint(rt, screenPoint, CameraFor(rt));
         }
+
+        // ---- which camera shows a rect ------------------------------------------------------------------
+        // The panels are on a canvas seen through a perspective camera (their corners lean in as the stock HUD's do): a
+        // screen point is mapped onto them through that camera. Every other canvas of the mode keeps screen pixels as its
+        // units (an overlay canvas, or one drawn by a camera set up to match it), which a null camera stands for.
+
+        private static Transform perspectiveCanvas;
+        private static Camera perspectiveCamera;
+
+        internal static void UsePerspectiveCanvas(Canvas canvas, Camera camera)
+        {
+            perspectiveCanvas = canvas ? canvas.transform : null;
+            perspectiveCamera = camera;
+        }
+
+        /// <summary>The camera to map screen points onto this rect with (null: its units are screen pixels).</summary>
+        internal static Camera CameraFor(Transform t) =>
+            perspectiveCanvas && t && t.IsChildOf(perspectiveCanvas) ? perspectiveCamera : null;
     }
 }

@@ -137,7 +137,9 @@ namespace HighCommand.UI
         internal Vector3? ScreenToWorld(Vector2 screenPoint)
         {
             if (!MapInfo.Valid || !UiKit.Contains(root, screenPoint)) return null;
-            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(mapRect, screenPoint, null, out Vector2 local)) return null;
+            // through the camera that shows the map: its corner of the HUD leans in, a straight mapping would be off
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(mapRect, screenPoint, UiKit.CameraFor(mapRect), out Vector2 local))
+                return null;
             Rect r = mapRect.rect;
             var uv = new Vector2((local.x - r.xMin) / r.width, (local.y - r.yMin) / r.height);
             return MapInfo.Minimap01ToWorld(uv);
