@@ -56,7 +56,7 @@ Kills, barrels and income fill one shared purse. Spend it on:
 
 ### Share the loot your way
 Items go into the army's pool and are handed out to the heroes. Open the item panel (`I`) to see who carries what, and
-drag an item onto another hero to give it.
+drag an item onto another hero to give it. Click any item to open the game's own item card.
 
 ![The item panel](https://raw.githubusercontent.com/kantemiir/RoR2-HighCommand/master/docs/screenshots/items.jpg)
 
@@ -68,7 +68,7 @@ Four abilities on their own cooldowns: **Orbital strike** (`F5`), **Field medic*
 One button (`H`): the nearest hero starts the teleporter, the army gathers in the zone, and when the boss is dead the
 same button takes everyone to the next stage.
 
-![The army holds the teleporter zone against a Wandering Vagrant](https://raw.githubusercontent.com/kantemiir/RoR2-HighCommand/master/docs/screenshots/teleporter.jpg)
+![The whole army holds the teleporter zone while it charges](https://raw.githubusercontent.com/kantemiir/RoR2-HighCommand/master/docs/screenshots/teleporter.jpg)
 
 ---
 

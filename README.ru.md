@@ -56,7 +56,7 @@ High Command превращает Risk of Rain 2 в стратегию в реа
 
 ### Предметы — как решите вы
 Предметы попадают в общий пул и раздаются героям. Панель предметов (`I`) показывает, у кого что. Перетащите предмет на
-другого героя, чтобы отдать его.
+другого героя, чтобы отдать его. Клик по любому предмету открывает его карточку из самой игры.
 
 ![Панель предметов](https://raw.githubusercontent.com/kantemiir/RoR2-HighCommand/master/docs/screenshots/items.jpg)
 
@@ -68,7 +68,7 @@ High Command превращает Risk of Rain 2 в стратегию в реа
 Одна кнопка (`H`): ближайший герой запускает телепорт, армия собирается в зоне, а после победы над боссом та же кнопка
 уводит всех на следующий уровень.
 
-![Армия держит зону телепорта против Странствующего бродяги](https://raw.githubusercontent.com/kantemiir/RoR2-HighCommand/master/docs/screenshots/teleporter.jpg)
+![Вся армия держит зону телепорта, пока он заряжается](https://raw.githubusercontent.com/kantemiir/RoR2-HighCommand/master/docs/screenshots/teleporter.jpg)
 
 ---
 
