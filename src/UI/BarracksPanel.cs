@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using HighCommand.Army;
 using HighCommand.Client;
 using HighCommand.Mode;
@@ -10,255 +9,193 @@ using UnityEngine.UI;
 
 namespace HighCommand.UI
 {
-    /// <summary>Recruiting panel: every survivor the game knows, its price and whether it can be bought now.</summary>
+    /// <summary>
+    /// The barracks: every survivor the game knows as a card of the stock character select (the bubbly backdrop, the
+    /// portrait in a slate frame, the name on a dark strip), what it costs or why it cannot be bought; under them the
+    /// army upgrades as stock menu buttons; at the bottom the description of what the pointer rests on.
+    /// </summary>
     internal sealed class BarracksPanel
     {
         private const int Columns = 7;
-        private const float CardW = 152f;
-        private const float CardH = 164f;
-        private const float Gap = 8f;
+        private const float CardSize = 136f, Gap = 8f;
+        private const float NameH = 44f;
+        private const float UpgradeH = 52f, UpgradeHeadH = 30f;
+        private const float DetailH = 52f;
+        private const float StatusEvery = 0.25f;   // the purse and unlocks are looked at this often, not every frame
+
+        private static readonly char[] LineBreaks = { '\n', '\r' };
+        private static readonly Color PortraitClosed = new Color(0.2f, 0.2f, 0.22f, 1f);
+        private static readonly Color PortraitOwned = new Color(0.55f, 0.55f, 0.58f, 1f);
+        private static readonly Color FrameColor = new Color(Theme.Button.r, Theme.Button.g, Theme.Button.b, 0.87f);
 
         private sealed class Card
         {
             internal SurvivorDef def;
             internal RectTransform root;
-            internal Image back;
-            internal Image frame;
             internal RawImage portrait;
             internal TextMeshProUGUI name;
-            internal TextMeshProUGUI role;
-            internal TextMeshProUGUI status;
-            internal Image band;
-            internal RecruitStatus shown = (RecruitStatus)255;
-            internal bool shownOver;
+            internal TextMeshProUGUI line;
+            internal HoverOutline hover;
+            internal RecruitStatus status = (RecruitStatus)255;
+            internal int price = -1;
+            internal bool wasHover;
         }
 
-        private const float HeadH = 62f;      // the title strip
-        private const float DetailH = 62f;    // the description under everything
-
-        private static readonly Color InArmy = new Color(0.55f, 0.8f, 1f, 1f);
-        private static readonly Color BandBuy = new Color(0.2f, 0.45f, 0.24f, 0.9f);
-        private static readonly Color BandPrice = new Color(0.28f, 0.22f, 0.08f, 0.85f);
-        private static readonly Color BandArmy = new Color(0.12f, 0.24f, 0.36f, 0.85f);
-        private static readonly Color BandNone = new Color(0.03f, 0.04f, 0.06f, 0.75f);
-
-        private readonly RectTransform root;
+        private readonly Window window;
         private readonly RectTransform grid;
-        private readonly TextMeshProUGUI title;
-        private readonly TextMeshProUGUI info;
-        private readonly Image detailRule;
+        private readonly TextMeshProUGUI upgradeHead;
+        private readonly MenuButton[] upgrades = new MenuButton[ArmyUpgrades.Count];
+        private readonly int[] upgradeKeys = new int[ArmyUpgrades.Count];
         private readonly TextMeshProUGUI detail;
+        private readonly List<Card> cards = new List<Card>();
         private static readonly IReadOnlyList<Hero> NoHeroes = new List<Hero>();
 
-        private readonly List<Card> cards = new List<Card>();
-        private int builtForCount = -1;
-        private float panelWidth;
-        private SurvivorDef hovered;
+        private float statusAt = -10f;
+        private int noteKey = int.MinValue;
+        private object detailFor;
 
-        // army upgrades: a strip of buttons under the survivor cards
-        private sealed class UpgradeButton
-        {
-            internal RectTransform root;
-            internal Image frame;
-            internal TextMeshProUGUI text;
-        }
-
-        private const float UpgradeH = 58f;
-        private readonly TextMeshProUGUI upgradeHeader;
-        private readonly UpgradeButton[] upgrades = new UpgradeButton[ArmyUpgrades.Count];
-        private int hoveredUpgrade = -1;
-
-        internal bool Visible => root && root.gameObject.activeSelf;
+        internal bool Visible => window.Visible;
 
         internal BarracksPanel(Transform parent)
         {
-            root = UiKit.NewPanel("Barracks", parent, UiKit.PanelDark);
-            float width = Columns * CardW + (Columns - 1) * Gap + 40f;
-            UiKit.Place(root, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 20f), new Vector2(width, 700f));
-            panelWidth = width;
+            float bodyW = Columns * CardSize + (Columns - 1) * Gap;
+            window = new Window(parent, "Barracks", new Vector2(bodyW + 2f * (Window.Pad + 3f), 700f));
 
-            // the title strip: the same accent bar and hairline as the cards of the interface, the purse on the right
-            Image bar = UiKit.NewImage("HeadBar", root, UiKit.White, UiKit.Accent);
-            UiKit.Place(bar.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, -22f), new Vector2(4f, 24f));
-            title = UiKit.NewText("Title", root, "", 26f, UiKit.Text, TextAlignmentOptions.Left);
-            UiKit.Place(title.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(34f, -16f), new Vector2(400f, 36f));
-            info = UiKit.NewText("Info", root, "", 19f, UiKit.TextDim, TextAlignmentOptions.Right);
-            UiKit.Place(info.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-20f, -18f), new Vector2(width - 460f, 32f));
-            info.enableWordWrapping = false;
-            Image rule = UiKit.NewImage("HeadLine", root, UiKit.White, new Color(0.6f, 0.7f, 0.82f, 0.22f));
-            UiKit.Place(rule.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, -HeadH + 8f), new Vector2(width - 40f, 1f));
+            grid = UiKit.NewRect("Grid", window.Body);
+            grid.anchorMin = grid.anchorMax = new Vector2(0f, 1f);
+            grid.pivot = new Vector2(0f, 1f);
 
-            grid = UiKit.NewRect("Grid", root);
-            UiKit.Place(grid, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, -(HeadH + 6f)), new Vector2(width - 40f, 520f));
-
-            detailRule = UiKit.NewImage("DetailLine", root, UiKit.White, new Color(0.6f, 0.7f, 0.82f, 0.16f));
-            UiKit.Place(detailRule.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(20f, DetailH + 10f), new Vector2(width - 40f, 1f));
-            detail = UiKit.NewText("Detail", root, "", 17f, UiKit.TextDim, TextAlignmentOptions.MidlineLeft);
-            UiKit.Place(detail.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(20f, 8f), new Vector2(width - 40f, DetailH));
-            detail.enableWordWrapping = true;
-            // long survivor descriptions shrink to fit instead of spilling below the panel
-            detail.enableAutoSizing = true;
-            detail.fontSizeMin = 11f;
-            detail.fontSizeMax = 17f;
-
-            upgradeHeader = UiKit.NewText("UpgradeHeader", root, Loc.Get("HIGHCOMMAND_UPGRADE_HEADER"), 15f, UiKit.Accent, TextAlignmentOptions.BottomLeft);
-            upgradeHeader.fontStyle = FontStyles.UpperCase;
-            upgradeHeader.characterSpacing = 3f;
-            float buttonW = (width - 40f - (ArmyUpgrades.Count - 1) * Gap) / ArmyUpgrades.Count;
-            for (int i = 0; i < ArmyUpgrades.Count; i++)
+            upgradeHead = UiKit.NewText("UpgradeHead", window.Body, "", Theme.SizeBody, Theme.TextSub, TextAlignmentOptions.BottomLeft);
+            float buttonW = (bodyW - (ArmyUpgrades.Count - 1) * Gap) / ArmyUpgrades.Count;
+            for (int i = 0; i < upgrades.Length; i++)
             {
-                var b = new UpgradeButton { root = UiKit.NewRect("Upgrade_" + i, root) };
-                b.root.sizeDelta = new Vector2(buttonW, UpgradeH);
-                b.frame = b.root.gameObject.AddComponent<Image>();
-                UiKit.StyleOutline(b.frame, 7f);
-                b.frame.color = UiKit.Border;
-                b.frame.raycastTarget = false;
-                UiKit.NewFill("Back", b.root, new Color(0.06f, 0.08f, 0.11f, 0.95f), 7f);
-                b.text = UiKit.NewText("Text", b.root, "", 18f, UiKit.Text, TextAlignmentOptions.Center);
-                UiKit.Stretch(b.text.rectTransform, 4, 4, 2, 2);
-                b.text.enableAutoSizing = true;
-                b.text.fontSizeMin = 11f;
-                b.text.fontSizeMax = 18f;
-                upgrades[i] = b;
+                upgrades[i] = new MenuButton(window.Body, "Upgrade_" + i, new Vector2(buttonW, UpgradeH), 20f);
+                upgrades[i].Label.lineSpacing = -12f;
+                upgradeKeys[i] = int.MinValue;
             }
 
+            detail = UiKit.NewText("Detail", window.Body, "", 16f, Theme.TextBody, TextAlignmentOptions.TopLeft);
+            detail.enableWordWrapping = true;
+            detail.enableAutoSizing = true;
+            detail.fontSizeMin = 12f;
+            detail.fontSizeMax = 16f;
+            detail.overflowMode = TextOverflowModes.Ellipsis;
+
             ClientInput.RegisterUiHitTest(Contains);
-            root.gameObject.SetActive(false);
         }
 
-        internal bool Contains(Vector2 screenPoint) => Visible && UiKit.Contains(root, screenPoint);
+        internal bool Contains(Vector2 screenPoint) => window.Contains(screenPoint);
 
         internal void Toggle()
         {
-            if (!root) return;
-            bool show = !root.gameObject.activeSelf;
-            if (show)
-            {
-                Build();
-                root.SetAsLastSibling();
-            }
-            root.gameObject.SetActive(show);
+            if (window.Visible) Hide();
+            else Show();
         }
 
-        internal void Hide()
+        internal void Show()
         {
-            if (root) root.gameObject.SetActive(false);
+            if (window.Visible) return;
+            Build();
+            window.Show();
+            UiSound.Click();
         }
+
+        internal void Hide() => window.Hide();
 
         internal void Destroy()
         {
             ClientInput.UnregisterUiHitTest(Contains);
-            if (root) Object.Destroy(root.gameObject);
+            window.Destroy();
         }
+
+        // ---- building ---------------------------------------------------------------------------------------
 
         private void Build()
         {
             foreach (Card c in cards) if (c.root) Object.Destroy(c.root.gameObject);
             cards.Clear();
+            statusAt = -10f;
+            noteKey = int.MinValue;
+            detailFor = null;
+            for (int i = 0; i < upgradeKeys.Length; i++) upgradeKeys[i] = int.MinValue;
 
             int index = 0;
             foreach (SurvivorDef def in ArmyService.Candidates())
             {
-                var c = new Card { def = def };
                 int col = index % Columns, row = index / Columns;
-                c.root = UiKit.NewRect("Card_" + def.cachedName, grid);
-                UiKit.Place(c.root, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(col * (CardW + Gap), -row * (CardH + Gap)), new Vector2(CardW, CardH));
-
-                c.frame = c.root.gameObject.AddComponent<Image>();
-                UiKit.StyleOutline(c.frame, 9f);
-                c.frame.color = UiKit.Border;
-                c.frame.raycastTarget = false;
-
-                c.back = UiKit.NewFill("Back", c.root, new Color(0.06f, 0.08f, 0.11f, 0.95f), 9f);
-
-                c.portrait = UiKit.NewRawImage("Portrait", c.root, null, Color.white);
-                UiKit.Place(c.portrait.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -8f), new Vector2(78f, 78f));
-                CharacterBody body = def.bodyPrefab.GetComponent<CharacterBody>();
-                if (body) c.portrait.texture = body.portraitIcon;
-
-                c.name = UiKit.NewText("Name", c.root, HeroName(def), 18f, UiKit.Text, TextAlignmentOptions.Center);
-                UiKit.Place(c.name.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -88f), new Vector2(CardW - 12f, 24f));
-                c.name.enableAutoSizing = true;
-                c.name.fontSizeMin = 12f;
-                c.name.fontSizeMax = 18f;
-                c.name.enableWordWrapping = false;
-
-                c.role = UiKit.NewText("Role", c.root, Loc.Get(HeroRoles.RoleToken(def.cachedName)), 14f, UiKit.TextDim, TextAlignmentOptions.Center);
-                UiKit.Place(c.role.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -111f), new Vector2(CardW - 12f, 20f));
-
-                // the status on a band along the bottom of the card (its colour says buy / too dear / in the army / no)
-                c.band = UiKit.NewFill("Band", c.root, BandNone, UiKit.InnerCut(9f, 2f));
-                c.band.rectTransform.anchorMax = new Vector2(1f, 0f);
-                c.band.rectTransform.offsetMax = new Vector2(-2f, 30f);
-                c.status = UiKit.NewText("Status", c.band.rectTransform, "", 16f, UiKit.Gold, TextAlignmentOptions.Center);
-                UiKit.Stretch(c.status.rectTransform, 4, 1, 4, 1);
-                c.status.enableAutoSizing = true;
-                c.status.fontSizeMin = 11f;
-                c.status.fontSizeMax = 16f;
-                c.status.enableWordWrapping = false;
-
+                Card c = NewCard(def);
+                c.root.anchoredPosition = new Vector2(col * (CardSize + Gap), -row * (CardSize + Gap));
                 cards.Add(c);
                 index++;
             }
-            builtForCount = index;
 
-            // fit the panel to the number of rows
+            float bodyW = window.BodyWidth;
             int rows = Mathf.Max(1, (index + Columns - 1) / Columns);
-            float gridHeight = rows * CardH + (rows - 1) * Gap;
-            float top = HeadH + 6f;
-            UiKit.Place(grid, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, -top), new Vector2(panelWidth - 40f, gridHeight));
+            float gridH = rows * CardSize + (rows - 1) * Gap;
+            grid.sizeDelta = new Vector2(bodyW, gridH);
+            grid.anchoredPosition = Vector2.zero;
 
-            // the upgrade strip right under the cards
-            float y = -top - gridHeight - 16f;
-            UiKit.Place(upgradeHeader.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, y), new Vector2(panelWidth - 40f, 24f));
-            y -= 30f;
-            for (int i = 0; i < upgrades.Length; i++)
-            {
-                RectTransform r = upgrades[i].root;
-                UiKit.Place(r, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f + i * (r.sizeDelta.x + Gap), y), r.sizeDelta);
-            }
-            float upgradeBlock = 16f + 30f + UpgradeH;
-            // the description sits right under the upgrades: no empty band at the bottom of the panel
-            UiKit.Place(root, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 20f),
-                new Vector2(panelWidth, top + gridHeight + upgradeBlock + 18f + DetailH + 18f));
+            float y = gridH + Theme.GroupGap;
+            Place(upgradeHead.rectTransform, y, UpgradeHeadH, bodyW);
+            upgradeHead.text = Loc.Get("HIGHCOMMAND_UPGRADE_HEADER");
+            y += UpgradeHeadH + 4f;
+            float buttonW = (bodyW - (ArmyUpgrades.Count - 1) * Gap) / ArmyUpgrades.Count;
+            for (int i = 0; i < upgrades.Length; i++) upgrades[i].SetPosition(i * (buttonW + Gap), y);
+            y += UpgradeH + Theme.GroupGap;
+            Place(detail.rectTransform, y, DetailH, bodyW);
+            y += DetailH;
+
+            window.SetSize(new Vector2(window.Panel.sizeDelta.x, Window.HeightFor(y)));
+            window.Title.text = Loc.Get("HIGHCOMMAND_BARRACKS_NAME");
+            window.FitToScreen();
         }
 
-        private void TickUpgrades(Vector2 mouse)
+        private static void Place(RectTransform rt, float y, float h, float w)
         {
-            hoveredUpgrade = -1;
-            uint gold = HcState.Instance != null ? HcState.Instance.Gold : 0u;
-            for (int i = 0; i < upgrades.Length; i++)
-            {
-                UpgradeButton b = upgrades[i];
-                int price = ArmyUpgrades.Price(i);
-                int level = ArmyUpgrades.Levels[i];
-                int max = ArmyUpgrades.MaxLevel[i];
-                string name = Loc.Get(ArmyUpgrades.NameToken(i));
-                bool over = UiKit.Contains(b.root, mouse);
-                if (over) hoveredUpgrade = i;
+            rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+            rt.pivot = new Vector2(0f, 1f);
+            rt.anchoredPosition = new Vector2(0f, -y);
+            rt.sizeDelta = new Vector2(w, h);
+        }
 
-                bool affordable = price > 0 && gold >= (uint)price;
-                // the name on top, the level and the price under it (the price green when it can be paid)
-                string sub = price < 0
-                    ? $"<color=#8C97A8>{Loc.Format("HIGHCOMMAND_UPGRADE_LEVEL", max, max)}   {Loc.Get("HIGHCOMMAND_UPGRADE_MAXSHORT")}</color>"
-                    : $"<color=#8C97A8>{Loc.Format("HIGHCOMMAND_UPGRADE_LEVEL", level, max)}</color>   <color={(affordable ? "#7EE08A" : "#FFD94A")}>${price}</color>";
-                UiKit.SetText(b.text, $"{name}\n<size=82%>{sub}</size>");
-                b.text.color = price < 0 ? UiKit.TextDim : UiKit.Text;
-                b.frame.color = affordable ? (over ? UiKit.Good : new Color(0.3f, 0.7f, 0.35f, 0.9f))
-                    : over ? Color.Lerp(UiKit.Border, Color.white, 0.4f) : new Color(0.5f, 0.6f, 0.72f, 0.45f);
+        private Card NewCard(SurvivorDef def)
+        {
+            var c = new Card { def = def };
+            Image face = UiKit.Sliced("Card_" + def.cachedName, grid, HudArt.CleanButton, Theme.CardFace);
+            c.root = face.rectTransform;
+            c.root.anchorMin = c.root.anchorMax = new Vector2(0f, 1f);
+            c.root.pivot = new Vector2(0f, 1f);
+            c.root.sizeDelta = new Vector2(CardSize, CardSize);
 
-                if (over && ClientInput.MouseDown(0))
-                {
-                    // single player: the host buys it right here
-                    string error = ArmyUpgrades.Buy(i);
-                    if (error != null) Toast.Error(error);
-                    else
-                    {
-                        Toast.Show(Loc.Format("HIGHCOMMAND_UPGRADE_DONE", name, ArmyUpgrades.Levels[i]));
-                        Feedback.Confirm();
-                    }
-                }
-            }
+            RawImage bubbles = UiKit.NewRawImage("Backdrop", c.root, HudArt.SurvivorBackground, Color.white);
+            UiKit.Stretch(bubbles.rectTransform, 2f, 2f, 2f, 2f);
+            if (!bubbles.texture) bubbles.enabled = false;
+            Image frame = UiKit.Sliced("Frame", c.root, HudArt.CleanButton, FrameColor);
+            UiKit.Stretch(frame.rectTransform);
+            frame.fillCenter = false;
+
+            c.portrait = UiKit.NewRawImage("Portrait", c.root, null, Color.white);
+            UiKit.Stretch(c.portrait.rectTransform, 8f, 8f, 8f, 8f);
+            CharacterBody body = def.bodyPrefab ? def.bodyPrefab.GetComponent<CharacterBody>() : null;
+            if (body) c.portrait.texture = body.portraitIcon;
+
+            Image strip = UiKit.NewImage("NameStrip", c.root, UiKit.White, Theme.CardName);
+            UiKit.Place(strip.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 6f), new Vector2(CardSize, NameH));
+            strip.rectTransform.anchorMax = new Vector2(1f, 0f);
+            strip.rectTransform.sizeDelta = new Vector2(0f, NameH);
+            c.name = UiKit.NewText("Name", strip.rectTransform, HeroName(def), 19f, Theme.Text, TextAlignmentOptions.TopLeft);
+            UiKit.Stretch(c.name.rectTransform, 6f, 18f, 4f, 2f);
+            c.name.enableAutoSizing = true;
+            c.name.fontSizeMin = 12f;
+            c.name.fontSizeMax = 19f;
+            c.line = UiKit.NewText("Line", strip.rectTransform, "", 14f, Theme.TextSub, TextAlignmentOptions.BottomLeft);
+            UiKit.Stretch(c.line.rectTransform, 6f, 3f, 4f, 22f);
+            c.line.enableAutoSizing = true;
+            c.line.fontSizeMin = 10f;
+            c.line.fontSizeMax = 14f;
+
+            c.hover = HoverOutline.ForIcon(c.root);
+            return c;
         }
 
         private static string HeroName(SurvivorDef def)
@@ -272,97 +209,149 @@ namespace HighCommand.UI
             return string.IsNullOrEmpty(token) ? def.cachedName : Hero.Plain(Language.GetString(token));
         }
 
-        private static readonly Regex Tags = new Regex("<[^>]+>", RegexOptions.Compiled);
+        // ---- per frame --------------------------------------------------------------------------------------
 
         internal void Tick()
         {
-            if (!Visible) return;
+            window.Tick();
+            if (!window.Visible) return;
 
             HcState state = HcState.Instance;
             IReadOnlyList<Hero> heroes = state != null ? state.Heroes : NoHeroes;
-            Vector2 mouse = ClientInput.Mouse;
+            Vector2 mouse = ClientInput.MouseBlocked ? new Vector2(-1f, -1f) : ClientInput.Mouse;
+            bool click = ClientInput.MouseDown(0);
+            int price = state != null ? state.NextHeroPrice() : 0;
+            uint gold = state != null ? state.Gold : 0u;
 
-            UiKit.SetText(title, Loc.Get("HIGHCOMMAND_BARRACKS_NAME"));
-            UiKit.SetText(info, Loc.Format("HIGHCOMMAND_BARRACKS_INFO", state != null ? state.NextHeroPrice() : 0, state != null ? state.Gold : 0u));
+            int note = price * 31 + (int)Mathf.Min(gold, int.MaxValue / 64);
+            if (note != noteKey)
+            {
+                noteKey = note;
+                window.Note.text = Loc.Format("HIGHCOMMAND_BARRACKS_NOTE", price, gold, gold >= (uint)price ? Theme.HexMoney : Theme.HexDeath);
+            }
 
-            hovered = null;
+            bool recheck = Time.unscaledTime - statusAt >= StatusEvery;
+            if (recheck) statusAt = Time.unscaledTime;
+            object hovered = null;
+
             foreach (Card c in cards)
             {
                 if (!c.root) continue;
-                RecruitStatus status = ArmyService.Check(c.def, heroes, state);
+                if (recheck)
+                {
+                    RecruitStatus status = ArmyService.Check(c.def, heroes, state);
+                    if (status != c.status || price != c.price) Show(c, status, price);
+                }
                 bool over = UiKit.Contains(c.root, mouse);
-                if (over) hovered = c.def;
-
-                Color frame = over ? Color.Lerp(UiKit.Border, Color.white, 0.4f) : new Color(0.5f, 0.6f, 0.72f, 0.45f);
-                Color band = BandNone;
-                string text;
-                switch (status)
-                {
-                    case RecruitStatus.Available:
-                        frame = over ? UiKit.Good : new Color(0.3f, 0.7f, 0.35f, 0.9f);
-                        band = BandBuy;
-                        text = Loc.Format("HIGHCOMMAND_RECRUIT_BUY", state.NextHeroPrice());
-                        c.status.color = Color.Lerp(UiKit.Good, Color.white, 0.35f);
-                        break;
-                    case RecruitStatus.NeedGold:
-                        band = BandPrice;
-                        text = Loc.Format("HIGHCOMMAND_RECRUIT_PRICE", state.NextHeroPrice());
-                        c.status.color = UiKit.Gold;
-                        break;
-                    case RecruitStatus.AlreadyOwned:
-                        frame = over ? InArmy : new Color(InArmy.r, InArmy.g, InArmy.b, 0.55f);
-                        band = BandArmy;
-                        text = ArmyService.StatusText(status, state);
-                        c.status.color = InArmy;
-                        break;
-                    default:
-                        text = ArmyService.StatusText(status, state);
-                        c.status.color = UiKit.TextDim;
-                        break;
-                }
-                if (c.shown != status || c.shownOver != over)
-                {
-                    c.shown = status;
-                    c.shownOver = over;
-                    c.frame.color = frame;
-                    c.band.color = band;
-                    bool closed = status == RecruitStatus.Locked || status == RecruitStatus.NotAllowed;
-                    c.portrait.color = closed ? new Color(0.25f, 0.25f, 0.25f, 1f) : Color.white;
-                    c.name.color = closed ? UiKit.TextDim : UiKit.Text;
-                }
-                UiKit.SetText(c.status, text);
-
-                if (over && ClientInput.MouseDown(0) && status == RecruitStatus.Available)
-                    Request(c.def);
-                else if (over && ClientInput.MouseDown(0))
-                    Toast.Error(ArmyService.StatusText(status, state));
+                c.hover.Tick(over);
+                if (over && !c.wasHover) UiSound.Hover();
+                c.wasHover = over;
+                if (!over) continue;
+                hovered = c.def;
+                if (click) Recruit(c, state);
             }
 
-            TickUpgrades(mouse);
-
-            if (hoveredUpgrade >= 0)
-                UiKit.SetText(detail, Loc.Get(ArmyUpgrades.DescToken(hoveredUpgrade)));
-            else if (hovered)
+            for (int i = 0; i < upgrades.Length; i++)
             {
-                string desc = hovered.descriptionToken != null ? Language.GetString(hovered.descriptionToken) : "";
-                desc = Tags.Replace(desc, "");
-                if (desc.Length > 330) desc = desc.Substring(0, 330) + "...";
-                UiKit.SetText(detail, desc);
+                if (TickUpgrade(i, mouse, click, gold)) hovered = upgrades[i];
             }
-            else UiKit.SetText(detail, Loc.Get("HIGHCOMMAND_BARRACKS_HINT"));
+
+            ShowDetail(hovered);
         }
 
-        private static void Request(SurvivorDef def)
+        private static void Show(Card c, RecruitStatus status, int price)
         {
-            // Host: recruited right here. Client: the request goes to the server, which answers with a toast.
-            string error = ArmyService.TryRecruit(def, ArmyService.LoadoutFor(def));
+            c.status = status;
+            c.price = price;
+            string role = Loc.Get(HeroRoles.RoleToken(c.def.cachedName));
+            switch (status)
+            {
+                case RecruitStatus.Available:
+                    c.line.text = role + "  <color=" + Theme.HexMoney + ">$" + price + "</color>";
+                    break;
+                case RecruitStatus.NeedGold:
+                    c.line.text = role + "  <color=" + Theme.HexDeath + ">$" + price + "</color>";
+                    break;
+                case RecruitStatus.AlreadyOwned:
+                    c.line.text = "<color=" + Theme.HexHealing + ">" + Loc.Get("HIGHCOMMAND_BARRACKS_OWNED") + "</color>";
+                    break;
+                case RecruitStatus.ArmyFull:
+                    c.line.text = role + "  <style=cStack>" + Loc.Get("HIGHCOMMAND_BARRACKS_FULL") + "</style>";
+                    break;
+                default:
+                    c.line.text = "<style=cStack>" + ArmyService.StatusText(status, null) + "</style>";
+                    break;
+            }
+            bool closed = status == RecruitStatus.Locked || status == RecruitStatus.NotAllowed;
+            c.portrait.color = closed ? PortraitClosed : status == RecruitStatus.AlreadyOwned ? PortraitOwned : Color.white;
+            c.name.color = closed ? Theme.TextDisabled : Theme.Text;
+        }
+
+        private static void Recruit(Card c, HcState state)
+        {
+            RecruitStatus status = ArmyService.Check(c.def, state != null ? state.Heroes : NoHeroes, state);
+            if (status != RecruitStatus.Available)
+            {
+                Toast.Error(ArmyService.StatusText(status, state));
+                return;
+            }
+            // host: recruited right here; a client asks the server, which answers with a toast
+            string error = ArmyService.TryRecruit(c.def, ArmyService.LoadoutFor(c.def));
             if (error == Net.CommandChannel.Relayed) return;
             if (error != null) Toast.Error(error);
             else
             {
-                Toast.Show(Loc.Format("HIGHCOMMAND_RECRUITED", HeroName(def)));
-                Feedback.Confirm();
+                Toast.Show(Loc.Format("HIGHCOMMAND_RECRUITED", HeroName(c.def)));
+                UiSound.Click();
             }
+        }
+
+        /// <summary>Returns true while the pointer is on the button.</summary>
+        private bool TickUpgrade(int i, Vector2 mouse, bool click, uint gold)
+        {
+            MenuButton b = upgrades[i];
+            int price = ArmyUpgrades.Price(i);
+            int level = ArmyUpgrades.Levels[i];
+            int max = ArmyUpgrades.MaxLevel[i];
+            bool affordable = price > 0 && gold >= (uint)price;
+            int key = (price * 16 + level) * 2 + (affordable ? 1 : 0);
+            if (key != upgradeKeys[i])
+            {
+                upgradeKeys[i] = key;
+                string name = Loc.Get(ArmyUpgrades.NameToken(i));
+                string sub = price < 0
+                    ? Loc.Format("HIGHCOMMAND_UPGRADE_LEVEL", max, max) + "  " + Loc.Get("HIGHCOMMAND_UPGRADE_MAXSHORT")
+                    : Loc.Format("HIGHCOMMAND_UPGRADE_LEVEL", level, max) + "  <color=" + (affordable ? Theme.HexMoney : Theme.HexDeath) + ">$" + price + "</color>";
+                b.Label.text = name + "\n<size=72%><style=cSub>" + sub + "</style></size>";
+            }
+            bool over = b.Refresh(mouse, price > 0);
+            if (!b.Clicked(click)) return over;
+
+            string error = ArmyUpgrades.Buy(i);
+            if (error != null) Toast.Error(error);
+            else Toast.Show(Loc.Format("HIGHCOMMAND_UPGRADE_DONE", Loc.Get(ArmyUpgrades.NameToken(i)), ArmyUpgrades.Levels[i]));
+            return over;
+        }
+
+        private void ShowDetail(object hovered)
+        {
+            if (ReferenceEquals(hovered, detailFor) && detail.text.Length > 0) return;
+            detailFor = hovered;
+            if (hovered is SurvivorDef def)
+            {
+                string desc = def.descriptionToken != null ? Language.GetString(def.descriptionToken).TrimStart() : "";
+                int cut = desc.IndexOfAny(LineBreaks);
+                if (cut > 0) desc = desc.Substring(0, cut);   // the first paragraph: who it is, not the whole guide
+                detail.text = "<color=#FFFFFF>" + HeroName(def) + "</color>  " + desc;
+                return;
+            }
+            for (int i = 0; i < upgrades.Length; i++)
+            {
+                if (!ReferenceEquals(hovered, upgrades[i])) continue;
+                detail.text = "<color=#FFFFFF>" + Loc.Get(ArmyUpgrades.NameToken(i)) + "</color>  " + Loc.Get(ArmyUpgrades.DescToken(i));
+                return;
+            }
+            detail.text = "<style=cSub>" + Loc.Get("HIGHCOMMAND_BARRACKS_HINT") + "</style>";
         }
     }
 }

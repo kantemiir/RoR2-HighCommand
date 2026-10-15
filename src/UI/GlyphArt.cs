@@ -10,7 +10,7 @@ namespace HighCommand.UI
         OrbitalStrike, Medic, WarCry, Mark,
         Move, Attack, Follow, Interact, Select, ChevronDown,
         Coin, Person, Clock, Chest, Cancel,
-        SeekEnemies, SeekChests,
+        SeekEnemies, SeekChests, Help,
         Count
     }
 
@@ -270,6 +270,14 @@ namespace HighCommand.UI
                     p.Rect(19f, 16f, 25f, 30f);
                     p.Ring(44f, 46f, 12f, 5f);
                     p.Seg(53f, 37f, 61f, 28f, 7f);
+                    break;
+
+                case Glyph.Help:
+                    // a question mark: the hook, the stem, the dot
+                    p.Arc(32f, 42f, 13f, -60f, 190f, 9f);
+                    p.Seg(38.5f, 30.7f, 32f, 24f, 9f);
+                    p.Seg(32f, 24f, 32f, 19f, 9f);
+                    p.Disc(32f, 8f, 6f);
                     break;
             }
             return p.Alpha;

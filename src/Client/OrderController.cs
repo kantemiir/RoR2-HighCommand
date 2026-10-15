@@ -344,9 +344,9 @@ namespace HighCommand.Client
                 case Pending.Rally: color = FollowColor; return Glyph.Rally;
                 case Pending.AbilityPoint:
                 case Pending.AbilityTarget:
-                    // the ability's own picture and colour, as on its tile
-                    color = AbilityTile.ColorOf(abilityIndex);
-                    return AbilityTile.GlyphOf(abilityIndex);
+                    // the ability's own colour and picture
+                    color = CommanderLook.ColorOf(abilityIndex);
+                    return CommanderLook.GlyphOf(abilityIndex);
                 default: color = OrangeColor; return Glyph.Focus;
             }
         }
@@ -816,10 +816,6 @@ namespace HighCommand.Client
             Pings.Add(new PingMarker { position = world, color = color, born = Time.unscaledTime, life = 0.7f, size = size });
         }
 
-        internal static void Confirm()
-        {
-            try { Util.PlaySound("Play_UI_menuClick", RoR2Application.instance ? RoR2Application.instance.gameObject : null); }
-            catch (System.Exception) { /* sounds are a nicety */ }
-        }
+        internal static void Confirm() => UiSound.Click();
     }
 }

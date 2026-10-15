@@ -34,8 +34,12 @@ namespace HighCommand.Client
         private SelectionController selectionController;
         private OrderController orders;
         private ToastView toast;
-        private TopBar topBar;
+        private PurseCluster purse;
+        private RunPanel runPanel;
+        private ArmyItemStrip itemStrip;
+        private DefeatBanner defeat;
         private CommandCard commandCard;
+        private AbilityBar abilityBar;
         private RosterPanel roster;
         private BarracksPanel barracks;
         private InventoryPanel inventory;
@@ -63,12 +67,19 @@ namespace HighCommand.Client
             // The stock cursor opener shows the OS-confined mouse cursor the same way menus do.
             canvas.gameObject.AddComponent<CursorOpener>();
 
+            HudArt.Preload();
             overlay = new WorldOverlay(canvas.transform);   // first: it draws underneath the panels
+            // the HUD in the stock HUD's places: minimap, purse, run panel, items, army, orders, abilities
             minimap = new Minimap(canvas.transform);
-            topBar = new TopBar(canvas.transform);
+            purse = new PurseCluster(canvas.transform);
+            runPanel = new RunPanel(canvas.transform);
+            itemStrip = new ArmyItemStrip(canvas.transform);
             roster = new RosterPanel(canvas.transform);
             commandCard = new CommandCard(canvas.transform);
-            lootFeed = new LootFeed(canvas.transform);       // below the big panels
+            abilityBar = new AbilityBar(canvas.transform);
+            lootFeed = new LootFeed(canvas.transform);
+            defeat = new DefeatBanner(canvas.transform);
+            // the windows above the HUD, the messages and the tooltip above everything
             barracks = new BarracksPanel(canvas.transform);
             inventory = new InventoryPanel(canvas.transform);
             help = new HelpOverlay(canvas.transform);
@@ -76,6 +87,7 @@ namespace HighCommand.Client
             tooltip = new TooltipView(canvas.transform);
             selectionController = new SelectionController(Selection, overlay);
             orders = new OrderController(Selection, minimap, overlay);
+            ClientInput.RegisterUiHitTest(HudContains);
 
             RegisterHelp();
             Stage.onStageStartGlobal += OnStageStart;
@@ -90,12 +102,17 @@ namespace HighCommand.Client
             Economy.OnGoldGained -= OnGoldGained;
             ArmyUpgrades.RankedUp -= OnRankedUp;
             HighCommand.Orders.HeroBrain.InteractFailed -= OnInteractFailed;
+            ClientInput.UnregisterUiHitTest(HudContains);
             minimap?.Destroy();
             help?.Destroy();
             overlay?.Destroy();
-            topBar?.Destroy();
+            purse?.Destroy();
+            runPanel?.Destroy();
+            itemStrip?.Destroy();
+            defeat?.Destroy();
             roster?.Destroy();
             commandCard?.Destroy();
+            abilityBar?.Destroy();
             barracks?.Destroy();
             inventory?.Destroy();
             tooltip?.Destroy();
@@ -116,8 +133,8 @@ namespace HighCommand.Client
                 Loc.Get("HIGHCOMMAND_HELP_PAN"));
             HelpOverlay.Add(Loc.Get("HIGHCOMMAND_KEY_EDGE"), Loc.Get("HIGHCOMMAND_HELP_EDGE"));
             HelpOverlay.Add(Loc.Get("HIGHCOMMAND_KEY_WHEEL"), Loc.Get("HIGHCOMMAND_HELP_ZOOM"));
-            HelpOverlay.Add($"{Loc.Get("HIGHCOMMAND_KEY_MMB_SIDE")} / {KeyName(Settings.KeyRotateLeft.Value)} {KeyName(Settings.KeyRotateRight.Value)}", Loc.Get("HIGHCOMMAND_HELP_ROTATE"));
-            HelpOverlay.Add($"{Loc.Get("HIGHCOMMAND_KEY_MMB_VERT")} / {KeyName(Settings.KeyTiltUp.Value)} {KeyName(Settings.KeyTiltDown.Value)}", Loc.Get("HIGHCOMMAND_HELP_TILT"));
+            HelpOverlay.Add($"{Loc.Get("HIGHCOMMAND_KEY_MMB_SIDE")} / {UiKit.KeyText(Settings.KeyRotateLeft.Value)} {UiKit.KeyText(Settings.KeyRotateRight.Value)}", Loc.Get("HIGHCOMMAND_HELP_ROTATE"));
+            HelpOverlay.Add($"{Loc.Get("HIGHCOMMAND_KEY_MMB_VERT")} / {UiKit.KeyText(Settings.KeyTiltUp.Value)} {UiKit.KeyText(Settings.KeyTiltDown.Value)}", Loc.Get("HIGHCOMMAND_HELP_TILT"));
             HelpOverlay.Add(Settings.KeyFocusSelected.Value.ToString(), Loc.Get("HIGHCOMMAND_HELP_FOCUS"));
             HelpOverlay.Add(Settings.KeyLastAlert.Value.ToString(), Loc.Get("HIGHCOMMAND_HELP_ALERT"));
             HelpOverlay.Add(Settings.KeyResetCamera.Value.ToString(), Loc.Get("HIGHCOMMAND_HELP_RESETCAM"));
@@ -156,21 +173,6 @@ namespace HighCommand.Client
                 Loc.Get("HIGHCOMMAND_HELP_ABILITIES"));
         }
 
-        // short names for the help sheet: "[" instead of "LeftBracket", "PgUp" instead of "PageUp"
-        private static string KeyName(KeyCode key)
-        {
-            switch (key)
-            {
-                case KeyCode.LeftBracket: return "[";
-                case KeyCode.RightBracket: return "]";
-                case KeyCode.PageUp: return "PgUp";
-                case KeyCode.PageDown: return "PgDn";
-                default:
-                    string s = key.ToString();
-                    return s.StartsWith("Alpha") ? s.Substring(5) : s;
-            }
-        }
-
         /// <summary>True when the Esc / pause key is intercepted by a Harmony patch (so Esc closes our panels first).</summary>
         internal static bool EscapeGuardActive;
 
@@ -181,7 +183,6 @@ namespace HighCommand.Client
         internal bool ConsumeEscape()
         {
             if (orders != null && orders.Mode != OrderController.Pending.None) { orders.CancelMode(); return true; }
-            if (commandCard != null && commandCard.CloseMenu()) return true;
             if (help != null && help.Visible) { help.Hide(); return true; }
             if (inventory != null && inventory.Visible) { inventory.Hide(); return true; }
             if (barracks != null && barracks.Visible) { barracks.Hide(); return true; }
@@ -194,22 +195,43 @@ namespace HighCommand.Client
         /// <summary>Testing: which panels are open and which targeting mode waits for a click.</summary>
         internal string Describe()
         {
-            return $"mode={orders.Mode} help={help.Visible} barracks={barracks.Visible} inventory={inventory.Visible} menu={commandCard.MenuOpen} " +
+            return $"mode={orders.Mode} help={help.Visible} barracks={barracks.Visible} inventory={inventory.Visible} " +
                    $"selected={Selection.Count} scale={appliedUiScale:0.00} screen={Screen.width}x{Screen.height}";
         }
 
         private CanvasGroup canvasGroup;
 
         private float appliedUiScale = -1f;
+        private float hudScale = 1f;
+        private float hudScaleReadAt = -10f;
 
-        // The whole interface is laid out for 1920x1080; UiScale shrinks or grows the reference area.
+        // The whole interface is laid out for 1920x1080. The game's own HUD scale setting (hud_scale) applies to it as to
+        // the stock HUD, and Interface/UiScale comes on top; both shrink or grow the reference area.
         private void ApplyUiScale()
         {
-            float scale = Mathf.Clamp(Settings.UiScale.Value, 0.6f, 1.6f);
+            if (Time.unscaledTime - hudScaleReadAt > 1f)
+            {
+                hudScaleReadAt = Time.unscaledTime;
+                hudScale = GameHudScale();
+            }
+            float scale = Mathf.Clamp(Settings.UiScale.Value * hudScale, 0.5f, 1.8f);
             if (Mathf.Approximately(scale, appliedUiScale)) return;
             appliedUiScale = scale;
             var scaler = canvas ? canvas.GetComponent<UnityEngine.UI.CanvasScaler>() : null;
             if (scaler) scaler.referenceResolution = new Vector2(1920f, 1080f) / scale;
+        }
+
+        private static float GameHudScale()
+        {
+            try
+            {
+                var convar = RoR2.Console.instance ? RoR2.Console.instance.FindConVar("hud_scale") : null;
+                if (convar != null && float.TryParse(convar.GetString(), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out float percent) && percent > 0f)
+                    return Mathf.Clamp(percent / 100f, 0.5f, 1.5f);
+            }
+            catch (Exception) { /* the stock setting is optional */ }
+            return 1f;
         }
 
         /// <summary>Testing: hides / shows the whole interface (measures what drawing it costs).</summary>
@@ -292,27 +314,33 @@ namespace HighCommand.Client
             // Show the interface only while a stage is running (not in loading screens / game over).
             bool inStage = Stage.instance != null && Run.instance != null && !Run.instance.isGameOverServer;
             minimap.SetVisible(inStage);
-            topBar.SetVisible(inStage);
+            purse.SetVisible(inStage);
+            runPanel.SetVisible(inStage);
+            itemStrip.SetVisible(inStage);
 
             if (!focusedThisStage && inStage && Camera)
                 TryInitialFocus();
 
             // Esc closes the topmost thing of the mode. Normally the pause key is intercepted (see EscapeGuard) so that
             // the same press does not also open the pause menu; this is the fallback when that patch is missing.
-            if (!EscapeGuardActive && ClientInput.RawKeyDown(KeyCode.Escape) && !ClientInput.KeyboardBlocked) ConsumeEscape();
+            // (a test command's Esc never reaches the game's pause key, so it is handled here in any case)
+            if ((!EscapeGuardActive && ClientInput.RawKeyDown(KeyCode.Escape) && !ClientInput.KeyboardBlocked)
+                || ClientInput.InjectedKeyDown(KeyCode.Escape)) ConsumeEscape();
 
-            if (ClientInput.KeyDown(Settings.KeyHelp.Value)) help.Toggle();
-
+            if (ClientInput.KeyDown(Settings.KeyHelp.Value)) Open(WindowKind.Help);
             if (inStage)
             {
-                if (ClientInput.KeyDown(Settings.KeyBarracks.Value)) barracks.Toggle();
-                if (ClientInput.MouseDown(0) && topBar.GoldPanelContains(ClientInput.Mouse)) barracks.Toggle();
-                if (ClientInput.MouseDown(0) && topBar.TeleporterPanelContains(ClientInput.Mouse)) orders.TeleporterAction();
-                if (ClientInput.MouseDown(0) && topBar.DefeatContains(ClientInput.Mouse)) orders.Revive(null);
+                if (ClientInput.KeyDown(Settings.KeyBarracks.Value)) Open(WindowKind.Barracks);
+                if (ClientInput.KeyDown(Settings.KeyInventory.Value)) Open(WindowKind.Items);
 
-                if (ClientInput.KeyDown(Settings.KeyInventory.Value)
-                    || (ClientInput.MouseDown(0) && topBar.ItemsPanelContains(ClientInput.Mouse))) { inventory.Toggle(); barracks.Hide(); }
-                if (barracks.Visible) inventory.Hide();
+                if (ClientInput.MouseDown(0))
+                {
+                    Vector2 at = ClientInput.Mouse;
+                    if (purse.Contains(at)) Open(WindowKind.Barracks);
+                    else if (itemStrip.Contains(at)) Open(WindowKind.Items);
+                    else if (runPanel.ObjectivesContain(at)) orders.TeleporterAction();
+                    else if (defeat.Contains(at)) orders.Revive(null);
+                }
             }
             else
             {
@@ -320,15 +348,15 @@ namespace HighCommand.Client
                 inventory.Hide();
             }
 
-            // A click beside the open orders list only closes it, as in any menu: in the world it would also have
-            // deselected the army or sent it somewhere. (Over another panel the click still does its job there.)
-            if (commandCard.MenuOpen && !commandCard.Contains(ClientInput.Mouse))
+            // A click beside an open window, in the world, only closes it, as in any menu: it would also have deselected
+            // the army or sent it somewhere. (A click on the HUD still does its job there.)
+            if (AnyWindow && !ClientInput.PointerOverUi)
             {
                 for (int b = 0; b < 2; b++)
                 {
                     if (!ClientInput.MouseDown(b)) continue;
-                    commandCard.CloseMenu();
-                    if (!ClientInput.PointerOverUi) ClientInput.Swallow(b);
+                    CloseWindows();
+                    ClientInput.Swallow(b);
                 }
             }
 
@@ -357,30 +385,95 @@ namespace HighCommand.Client
             orders.UpdateHover(heroes, inputAllowed && Camera && Camera.SceneCam);
             Dev.Perf.End(ref Dev.Perf.Part[Dev.Perf.PartPick], t);
 
+            // every panel on its own: one that fails is reported once and the others (and the stock HUD) go on
             t = Dev.Perf.Begin();
-            topBar.Tick(Time.unscaledDeltaTime, inventory.Visible);
+            try { purse.Tick(Time.unscaledDeltaTime); } catch (Exception e) { Failed(PanelPurse, e); }
+            try { runPanel.Tick(); } catch (Exception e) { Failed(PanelRun, e); }
+            try { itemStrip.Tick(); } catch (Exception e) { Failed(PanelItems, e); }
+            try { defeat.Tick(inStage); } catch (Exception e) { Failed(PanelDefeat, e); }
             Dev.Perf.End(ref Dev.Perf.Part[Dev.Perf.PartTopBar], t);
 
             t = Dev.Perf.Begin();
-            barracks.Tick();
-            inventory.Tick();
+            try { barracks.Tick(); } catch (Exception e) { Failed(PanelBarracks, e); }
+            try { inventory.Tick(); } catch (Exception e) { Failed(PanelInventory, e); }
+            try { help.Tick(); } catch (Exception e) { Failed(PanelHelp, e); }
             Dev.Perf.End(ref Dev.Perf.Part[Dev.Perf.PartOther], t);
 
             t = Dev.Perf.Begin();
-            roster.Tick(Selection, orders, inStage);
+            try { roster.Tick(Selection, orders, inStage); } catch (Exception e) { Failed(PanelRoster, e); }
             Dev.Perf.End(ref Dev.Perf.Part[Dev.Perf.PartRoster], t);
 
             t = Dev.Perf.Begin();
-            commandCard.Tick(Selection, orders, inStage);
+            try { commandCard.Tick(Selection, orders, inStage); } catch (Exception e) { Failed(PanelCommand, e); }
+            try
+            {
+                AbilityBar.Screen clicked = abilityBar.Tick(orders, inStage, barracks.Visible, inventory.Visible, help.Visible);
+                if (clicked == AbilityBar.Screen.Barracks) Open(WindowKind.Barracks);
+                else if (clicked == AbilityBar.Screen.Items) Open(WindowKind.Items);
+                else if (clicked == AbilityBar.Screen.Help) Open(WindowKind.Help);
+            }
+            catch (Exception e) { Failed(PanelAbilities, e); }
             Dev.Perf.End(ref Dev.Perf.Part[Dev.Perf.PartCommand], t);
 
             t = Dev.Perf.Begin();
-            lootFeed.Tick();
-            toast.Tick();
+            try
+            {
+                lootFeed.SetTop(runPanel.Bottom);
+                lootFeed.Tick();
+            }
+            catch (Exception e) { Failed(PanelLoot, e); }
+            try { toast.Tick(); } catch (Exception e) { Failed(PanelToast, e); }
             if (ClientInput.MouseBlocked) Tooltip.Clear(); // a pause screen or the console is on top: no tooltips
-            tooltip.Tick(); // last: shows what the panels above asked for this frame
+            try { tooltip.Tick(); } catch (Exception e) { Failed(PanelTooltip, e); } // last: shows what the panels asked for
             Dev.Perf.End(ref Dev.Perf.Part[Dev.Perf.PartOther], t);
             Dev.Perf.End(ref Dev.Perf.Ui, perfStart);
+        }
+
+        // ---- windows ---------------------------------------------------------------------------------------------
+
+        private enum WindowKind { Barracks, Items, Help }
+
+        private bool AnyWindow => barracks.Visible || inventory.Visible || help.Visible;
+
+        /// <summary>Opens a window (or closes it when it is the one open): one window at a time.</summary>
+        private void Open(WindowKind which)
+        {
+            bool wasOpen = which == WindowKind.Barracks ? barracks.Visible : which == WindowKind.Items ? inventory.Visible : help.Visible;
+            CloseWindows();
+            if (wasOpen) return;
+            switch (which)
+            {
+                case WindowKind.Barracks: barracks.Show(); break;
+                case WindowKind.Items: inventory.Show(); break;
+                default: help.Toggle(); break;
+            }
+        }
+
+        private void CloseWindows()
+        {
+            barracks.Hide();
+            inventory.Hide();
+            help.Hide();
+        }
+
+        // the HUD pieces that have no hit test of their own: a click on them must not reach the world
+        private bool HudContains(Vector2 point) =>
+            purse.Contains(point) || itemStrip.Contains(point) || runPanel.ObjectivesContain(point) || defeat.Contains(point)
+            || help.Contains(point);
+
+        // ---- one failing panel does not take the rest down -------------------------------------------------------
+
+        private const int PanelPurse = 0, PanelRun = 1, PanelItems = 2, PanelDefeat = 3, PanelBarracks = 4, PanelInventory = 5,
+            PanelHelp = 6, PanelRoster = 7, PanelCommand = 8, PanelAbilities = 9, PanelLoot = 10, PanelToast = 11, PanelTooltip = 12;
+        private static readonly string[] PanelNames =
+            { "purse", "run panel", "items", "defeat", "barracks", "inventory", "help", "roster", "command card", "abilities", "loot feed", "toast", "tooltip" };
+        private readonly bool[] panelFailed = new bool[PanelNames.Length];
+
+        private void Failed(int panel, Exception e)
+        {
+            if (panelFailed[panel]) return;
+            panelFailed[panel] = true; // reported once: an error every frame would flood the log
+            Plugin.Log.LogError($"HighCommand UI: the {PanelNames[panel]} failed (the rest goes on): {e}");
         }
 
         // Overlays use the camera pose of this very frame (this component runs after the stock camera rig).

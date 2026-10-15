@@ -8,36 +8,42 @@ using UnityEngine.UI;
 namespace HighCommand.UI
 {
     /// <summary>
-    /// Right-hand list of items the army just gained: icon, name in the rarity colour, count. Fills from the server's
-    /// item-feed RPC, so it works the same on a host and on a client.
+    /// Right side, under the objectives: what the army just picked up, as the game announces a pickup (NotificationPanel2):
+    /// the icon, the name in its rarity colour, on a strip that fades out at its ends. New lines slide in from the right,
+    /// old ones fade. Fills from the server's item-feed message, so it works the same on a host and on a client.
     /// </summary>
     internal sealed class LootFeed
     {
-        private const int MaxRows = 7;
-        private const float RowHeight = 40f;
-        private const float Life = 6.5f;
+        private const int MaxRows = 6;
+        private const float RowH = 40f, RowGap = 2f, Width = 330f;
+        private const float IconSize = 34f;
+        private const float Life = 6.5f, FadeOut = 0.8f, SlideIn = 0.18f, Slide = 40f;
+        private static readonly Color Strip = new Color(0.094f, 0.094f, 0.094f, 0.55f);
 
         private sealed class Row
         {
             internal RectTransform root;
-            internal Image back;
+            internal CanvasGroup group;
             internal RawImage icon;
             internal TextMeshProUGUI label;
             internal PickupIndex pickup;
             internal int count;
             internal float born;
-            internal float fade = -1f; // the last fade written (-1 = write the colours again)
-            internal int slot = -1;    // the last list position written
+            internal float alpha = -1f;   // the last alpha written
+            internal int slot = -1;       // the last list position written
+            internal float x = float.NaN;
         }
 
         private readonly RectTransform container;
         private readonly List<Row> rows = new List<Row>();
-        private readonly List<Row> pool = new List<Row>();
+        private readonly Stack<Row> pool = new Stack<Row>();
+        private float shownTop = -1f;
 
         internal LootFeed(Transform parent)
         {
             container = UiKit.NewRect("LootFeed", parent);
-            UiKit.Place(container, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-16f, -120f), new Vector2(380f, MaxRows * RowHeight));
+            UiKit.Place(container, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-Theme.Margin, -200f),
+                new Vector2(Width, MaxRows * (RowH + RowGap)));
             HcState.ItemGained += OnItemGained;
         }
 
@@ -47,83 +53,82 @@ namespace HighCommand.UI
             if (container) Object.Destroy(container.gameObject);
         }
 
+        /// <summary>Keeps the list under the objective panel (whose height changes with the objectives).</summary>
+        internal void SetTop(float below)
+        {
+            float top = Mathf.Round(below + Theme.GroupGap);
+            if (Mathf.Abs(top - shownTop) < 1f) return;
+            shownTop = top;
+            container.anchoredPosition = new Vector2(-Theme.Margin, -top);
+        }
+
         private void OnItemGained(PickupIndex pickup, int count)
         {
-            // merge with a recent row of the same item
+            float now = Time.unscaledTime;
+            // more of an item that is still on the list: its line counts up and stays longer
             foreach (Row r in rows)
             {
-                if (r.pickup == pickup && Time.unscaledTime - r.born < Life * 0.6f)
-                {
-                    r.count += count;
-                    r.born = Time.unscaledTime;
-                    Refresh(r);
-                    return;
-                }
+                if (r.pickup != pickup || now - r.born >= Life * 0.6f) continue;
+                r.count += count;
+                r.born = now - SlideIn;
+                Fill(r);
+                return;
             }
 
-            Row row = Acquire();
+            Row row = pool.Count > 0 ? pool.Pop() : NewRow();
+            row.root.gameObject.SetActive(true);
             row.pickup = pickup;
             row.count = count;
-            row.born = Time.unscaledTime;
-            Refresh(row);
+            row.born = now;
+            row.alpha = -1f;
+            row.slot = -1;
+            row.x = float.NaN;
+            Fill(row);
             rows.Insert(0, row);
             while (rows.Count > MaxRows)
             {
                 Row old = rows[rows.Count - 1];
                 rows.RemoveAt(rows.Count - 1);
                 old.root.gameObject.SetActive(false);
-                pool.Add(old);
+                pool.Push(old);
             }
-
-            try { Util.PlaySound("Play_UI_item_pickup", RoR2Application.instance.gameObject); }
-            catch (System.Exception) { /* a missing sound event is not worth an error */ }
+            UiSound.Pickup();
         }
 
-        private Row Acquire()
+        private Row NewRow()
         {
-            if (pool.Count > 0)
-            {
-                Row r = pool[pool.Count - 1];
-                pool.RemoveAt(pool.Count - 1);
-                r.root.gameObject.SetActive(true);
-                return r;
-            }
-
             var row = new Row();
-            row.root = UiKit.NewRect("Row", container);
+            Image back = UiKit.Sliced("Row", container, HudArt.BackdropFaded, Strip);
+            row.root = back.rectTransform;
             row.root.anchorMin = row.root.anchorMax = new Vector2(1f, 1f);
             row.root.pivot = new Vector2(1f, 1f);
-            row.root.sizeDelta = new Vector2(380f, RowHeight - 4f);
-
-            row.back = row.root.gameObject.AddComponent<Image>();
-            UiKit.StyleOutline(row.back, 6f);
-            row.back.color = new Color(0.04f, 0.05f, 0.07f, 0.75f);
-            row.back.raycastTarget = false;
+            row.root.sizeDelta = new Vector2(Width, RowH);
+            row.group = row.root.gameObject.AddComponent<CanvasGroup>();
+            row.group.blocksRaycasts = false;
 
             row.icon = UiKit.NewRawImage("Icon", row.root, null, Color.white);
-            UiKit.Place(row.icon.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(4f, 0f), new Vector2(32f, 32f));
+            UiKit.Place(row.icon.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-28f, 0f), new Vector2(IconSize, IconSize));
 
-            row.label = UiKit.NewText("Label", row.root, "", 20f, UiKit.Text, TextAlignmentOptions.Left);
-            UiKit.Place(row.label.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(44f, 0f), new Vector2(330f, 30f));
+            row.label = UiKit.NewText("Label", row.root, "", Theme.SizeBody, Theme.Text, TextAlignmentOptions.MidlineRight);
+            UiKit.Place(row.label.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-28f - IconSize - 8f, 0f),
+                new Vector2(Width - IconSize - 70f, RowH));
             row.label.enableAutoSizing = true;
             row.label.fontSizeMin = 12f;
-            row.label.fontSizeMax = 20f;
+            row.label.fontSizeMax = Theme.SizeBody;
             return row;
         }
 
-        private static void Refresh(Row r)
+        private static void Fill(Row r)
         {
-            r.fade = -1f;
-            r.slot = -1;
             PickupDef def = PickupCatalog.GetPickupDef(r.pickup);
             if (def == null) { r.label.text = "?"; return; }
             bool hasIcon = PickupIcons.Apply(r.icon, def);
             r.icon.color = hasIcon ? Color.white : def.baseColor;
-
+            string hex = ColorUtility.ToHtmlStringRGB(def.baseColor);
             string name = Language.GetString(def.nameToken);
-            Color color = def.baseColor;
-            string hex = ColorUtility.ToHtmlStringRGB(color);
-            r.label.text = r.count > 1 ? $"<color=#{hex}>{name}</color>  x{r.count}" : $"<color=#{hex}>{name}</color>";
+            r.label.text = r.count > 1
+                ? $"<color=#{hex}>{name}</color> <style=cStack>x{r.count}</style>"
+                : $"<color=#{hex}>{name}</color>";
         }
 
         internal void Tick()
@@ -132,27 +137,29 @@ namespace HighCommand.UI
             for (int i = rows.Count - 1; i >= 0; i--)
             {
                 Row r = rows[i];
-                if (now - r.born > Life)
+                float age = now - r.born;
+                if (age > Life)
                 {
                     rows.RemoveAt(i);
                     r.root.gameObject.SetActive(false);
-                    pool.Add(r);
+                    pool.Push(r);
                     continue;
                 }
-                // fully visible for most of its life: the colours are written only while it fades
-                float fade = Mathf.Clamp01((Life - (now - r.born)) * 1.5f);
-                if (r.fade != fade && (fade < 1f || r.fade != 1f))
+                // in: a quick slide from the right with the alpha; out: a fade. Written only while it changes.
+                float inT = Mathf.Clamp01(age / SlideIn);
+                float alpha = Mathf.Min(inT, Mathf.Clamp01((Life - age) / FadeOut));
+                float x = Mathf.Round(Slide * (1f - inT) * (1f - inT));
+                if (Mathf.Abs(alpha - r.alpha) > 0.01f || (alpha == 1f && r.alpha != 1f))
                 {
-                    r.fade = fade;
-                    r.back.color = new Color(0.04f, 0.05f, 0.07f, 0.75f * fade);
-                    r.icon.color = new Color(1f, 1f, 1f, fade);
+                    r.alpha = alpha;
+                    r.group.alpha = alpha;
                 }
-            }
-            for (int i = 0; i < rows.Count; i++)
-            {
-                if (rows[i].slot == i) continue;
-                rows[i].slot = i;
-                rows[i].root.anchoredPosition = new Vector2(0f, -i * RowHeight);
+                if (r.slot != i || x != r.x)
+                {
+                    r.slot = i;
+                    r.x = x;
+                    r.root.anchoredPosition = new Vector2(x, -i * (RowH + RowGap));
+                }
             }
         }
     }

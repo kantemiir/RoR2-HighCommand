@@ -5,7 +5,10 @@ using UnityEngine.UI;
 
 namespace HighCommand.UI
 {
-    /// <summary>Hotkey cheat sheet (F1). Lines are registered by each module so the sheet always matches the config.</summary>
+    /// <summary>
+    /// The hotkey sheet (F1) in a stock dialog window: two columns of sections, every line the keys on the plates the HUD
+    /// prints keys on and what they do. Lines are registered by each module so the sheet always matches the config.
+    /// </summary>
     internal sealed class HelpOverlay
     {
         private enum Kind { Line, Section, Column }
@@ -29,81 +32,62 @@ namespace HighCommand.UI
 
         internal static void Clear() => Entries.Clear();
 
-        // two columns inside the panel: 36 + 700 + 48 + 700 + 36 = 1520
-        private const float PanelW = 1520f;
-        private const float Side = 36f, ColumnGap = 48f;
-        private const float ColumnW = (PanelW - 2 * Side - ColumnGap) / 2f;
-        private const float KeysW = 250f;
-        private const float RowH = 29f;
+        private const float BodyW = 1440f;
+        private const float ColumnGap = 48f;
+        private const float ColumnW = (BodyW - ColumnGap) / 2f;
+        private const float KeysW = 236f;
+        private const float RowH = 30f;
         private const float SectionH = 40f;
-        private const float HeaderH = 84f;
-        private const float FooterH = 30f;
+        private const float SectionGap = 10f;
 
-        private static readonly Color Stripe = new Color(1f, 1f, 1f, 0.035f);
-        private static readonly Color KeyColor = new Color(1f, 0.82f, 0.4f, 1f);
+        private static readonly Color Rule = new Color(1f, 1f, 1f, 0.14f);
 
-        private readonly RectTransform root;
+        private readonly Window window;
         private readonly RectTransform rowsHost;
-        private readonly TextMeshProUGUI title;
-        private readonly TextMeshProUGUI closeHint;
 
         internal HelpOverlay(Transform parent)
         {
-            // fully opaque: the sheet lies over the command card and must not let it shine through
-            root = UiKit.NewPanel("Help", parent, new Color(0.04f, 0.05f, 0.07f, 0.98f));
-            UiKit.Place(root, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(PanelW, 600f));
-
-            Image bar = UiKit.NewImage("HeadBar", root, UiKit.White, UiKit.Accent);
-            UiKit.Place(bar.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(Side, -30f), new Vector2(4f, 26f));
-            title = UiKit.NewText("Title", root, "", 28f, UiKit.Text, TextAlignmentOptions.Left);
-            UiKit.Place(title.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(Side + 16f, -24f), new Vector2(PanelW - 2 * Side - 300f, 38f));
-            closeHint = UiKit.NewText("Close", root, "", 16f, UiKit.TextDim, TextAlignmentOptions.Right);
-            UiKit.Place(closeHint.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-Side, -30f), new Vector2(280f, 26f));
-            Image line = UiKit.NewImage("HeadLine", root, UiKit.White, new Color(0.6f, 0.7f, 0.82f, 0.22f));
-            UiKit.Place(line.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(Side, -HeaderH + 14f), new Vector2(PanelW - 2 * Side, 1f));
-
-            rowsHost = UiKit.NewRect("Rows", root);
-            UiKit.Place(rowsHost, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, -HeaderH), new Vector2(PanelW, 500f));
-
-            root.gameObject.SetActive(false);
+            window = new Window(parent, "Help", new Vector2(BodyW + 2f * (Window.Pad + 3f), 600f));
+            rowsHost = UiKit.NewRect("Rows", window.Body);
+            UiKit.Stretch(rowsHost);
         }
 
-        internal bool Visible => root && root.gameObject.activeSelf;
+        internal bool Visible => window.Visible;
+
+        internal bool Contains(Vector2 screenPoint) => window.Contains(screenPoint);
 
         internal void Toggle()
         {
-            if (!root) return;
-            bool show = !root.gameObject.activeSelf;
-            if (show)
+            if (window.Visible) Hide();
+            else
             {
+                // shown first: the lines measure their text, which needs them alive (an inactive text has no font yet)
+                window.Show();
                 Rebuild();
-                root.SetAsLastSibling(); // above the roster and the command card, not behind them
+                UiSound.Click();
             }
-            root.gameObject.SetActive(show);
         }
 
-        internal void Hide()
-        {
-            if (root) root.gameObject.SetActive(false);
-        }
+        internal void Hide() => window.Hide();
 
-        // Two columns of sections with "keys | what" rows. Every row is its own pair of text objects, so a long
-        // description can never push the following rows out of line (it shrinks instead of wrapping).
+        internal void Tick() => window.Tick();
+
+        // Every line is its own pair of texts, so a long description can never push the following lines out of
+        // place (it shrinks instead of wrapping).
         private void Rebuild()
         {
-            title.text = Loc.Get("HIGHCOMMAND_HELP_TITLE");
-            closeHint.text = Loc.Get("HIGHCOMMAND_HELP_CLOSE");
+            window.Title.text = Loc.Get("HIGHCOMMAND_HELP_TITLE");
+            window.Note.text = Loc.Get("HIGHCOMMAND_HELP_CLOSE");
 
             for (int i = rowsHost.childCount - 1; i >= 0; i--)
                 Object.Destroy(rowsHost.GetChild(i).gameObject);
 
             int column = 0;
             float y = 0f, tallest = 0f;
-            int stripe = 0;
             for (int i = 0; i < Entries.Count; i++)
             {
                 Entry e = Entries[i];
-                float x = Side + column * (ColumnW + ColumnGap);
+                float x = column * (ColumnW + ColumnGap);
                 switch (e.kind)
                 {
                     case Kind.Column:
@@ -114,32 +98,28 @@ namespace HighCommand.UI
 
                     case Kind.Section:
                     {
-                        float top = y > 0f ? y + 10f : y;
-                        TextMeshProUGUI head = UiKit.NewText("Section", rowsHost, e.what, 16f, UiKit.Accent, TextAlignmentOptions.BottomLeft);
-                        head.fontStyle = FontStyles.UpperCase;
-                        head.characterSpacing = 4f;
-                        UiKit.Place(head.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(x, -top), new Vector2(ColumnW, SectionH - 10f));
-                        Image rule = UiKit.NewImage("Rule", rowsHost, UiKit.White, new Color(1f, 0.64f, 0.18f, 0.28f));
-                        UiKit.Place(rule.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(x, -(top + SectionH - 6f)), new Vector2(ColumnW, 1f));
+                        float top = y > 0f ? y + SectionGap : y;
+                        TextMeshProUGUI head = UiKit.NewText("Section", rowsHost, e.what, 22f, Theme.Text, TextAlignmentOptions.BottomLeft);
+                        Place(head.rectTransform, x, top, ColumnW, SectionH - 8f);
+                        Image rule = UiKit.NewImage("Rule", rowsHost, UiKit.White, Rule);
+                        Place(rule.rectTransform, x, top + SectionH - 5f, ColumnW, 1f);
                         y = top + SectionH;
-                        stripe = 0;
                         break;
                     }
 
                     default:
                     {
-                        if (stripe++ % 2 == 1)
-                        {
-                            Image band = UiKit.NewImage("Stripe", rowsHost, UiKit.White, Stripe);
-                            UiKit.Place(band.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(x - 8f, -y), new Vector2(ColumnW + 16f, RowH));
-                        }
-                        TextMeshProUGUI keys = UiKit.NewText("Keys", rowsHost, e.keys, 18f, KeyColor, TextAlignmentOptions.Left);
-                        UiKit.Place(keys.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(x, -y), new Vector2(KeysW - 12f, RowH));
-                        Fit(keys);
+                        // the keys on a plate, as under the skill bar
+                        Image plate = UiKit.Sliced("Keys", rowsHost, HudArt.Plate, Theme.Plate);
+                        TextMeshProUGUI keys = UiKit.NewText("Text", plate.rectTransform, e.keys, Theme.SizeKey, Theme.TextHud, TextAlignmentOptions.Center);
+                        UiKit.Stretch(keys.rectTransform, 6f, 0f, 6f, 0f);
+                        Fit(keys, 11f, Theme.SizeKey);
+                        float keyW = Mathf.Min(KeysW - 12f, keys.GetPreferredValues(e.keys).x + 14f);
+                        Place(plate.rectTransform, x, y + 4f, keyW, RowH - 8f);
 
-                        TextMeshProUGUI what = UiKit.NewText("What", rowsHost, e.what, 18f, UiKit.Text, TextAlignmentOptions.Left);
-                        UiKit.Place(what.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(x + KeysW, -y), new Vector2(ColumnW - KeysW, RowH));
-                        Fit(what);
+                        TextMeshProUGUI what = UiKit.NewText("What", rowsHost, e.what, Theme.SizeBody, Theme.TextBody, TextAlignmentOptions.MidlineLeft);
+                        Place(what.rectTransform, x + KeysW, y, ColumnW - KeysW, RowH);
+                        Fit(what, 12f, Theme.SizeBody);
                         y += RowH;
                         break;
                     }
@@ -147,31 +127,27 @@ namespace HighCommand.UI
             }
             tallest = Mathf.Max(tallest, y);
 
-            float height = HeaderH + tallest + FooterH;
-            UiKit.Place(root, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(PanelW, height));
-            UiKit.Place(rowsHost, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, -HeaderH), new Vector2(PanelW, tallest));
-
-            // a big interface scale or a narrow screen: the whole sheet shrinks to fit instead of running off the sides
-            var parent = root.parent as RectTransform;
-            float room = parent ? parent.rect.width - 40f : PanelW;
-            float roomH = parent ? parent.rect.height - 40f : height;
-            float fit = Mathf.Min(1f, room / PanelW, roomH / height);
-            root.localScale = new Vector3(fit, fit, 1f);
+            window.SetSize(new Vector2(window.Panel.sizeDelta.x, Window.HeightFor(tallest)));
+            window.FitToScreen();
         }
 
-        private static void Fit(TextMeshProUGUI text)
+        private static void Place(RectTransform rt, float x, float y, float w, float h)
+        {
+            rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+            rt.pivot = new Vector2(0f, 1f);
+            rt.anchoredPosition = new Vector2(x, -y);
+            rt.sizeDelta = new Vector2(w, h);
+        }
+
+        private static void Fit(TextMeshProUGUI text, float min, float max)
         {
             text.enableWordWrapping = false;
             text.enableAutoSizing = true;
-            text.fontSizeMin = 13f;
-            text.fontSizeMax = 18f;
+            text.fontSizeMin = min;
+            text.fontSizeMax = max;
             text.overflowMode = TextOverflowModes.Ellipsis;
-            text.alignment = TextAlignmentOptions.MidlineLeft;
         }
 
-        internal void Destroy()
-        {
-            if (root) Object.Destroy(root.gameObject);
-        }
+        internal void Destroy() => window.Destroy();
     }
 }

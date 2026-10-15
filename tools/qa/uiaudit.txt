@@ -1,0 +1,102 @@
+# The interface in all its states (ua_*.png): HUD, selection, tooltips, windows, a fallen hero, items, cooldowns.
+# Coordinates are screen pixels at 1920x1080, origin bottom left.
+@wait 4
+@log === U1 run start, a few heroes, items
+hc_start
+@scene lobby
+@wait 3
+pregame_start_run
+@run
+@wait 20
+hc_gold 6000
+hc_recruit Commando
+hc_recruit Huntress
+hc_recruit Mage
+hc_drop_random 14
+hc_equip CommandMissile
+@wait 22
+hc_cam army
+hc_cam dist 45
+@wait 2
+@log === U2 nobody selected
+hc_select none
+@wait 1
+hc_screenshot ua_none
+@log === U3 everybody selected, new items coming in
+hc_select all
+hc_drop_random 4
+@wait 1.2
+hc_screenshot ua_all
+@log === U4 tooltips: an order, an ability, a hero card, a skill, the purse, an item
+hc_mouse 1479 109
+@wait 0.6
+hc_screenshot ua_tip_order
+hc_mouse 941 65
+@wait 0.6
+hc_screenshot ua_tip_ability
+hc_mouse 130 946
+@wait 0.6
+hc_screenshot ua_tip_hero
+hc_mouse 1700 65
+@wait 0.6
+hc_screenshot ua_tip_skill
+hc_mouse 120 1030
+@wait 0.6
+hc_screenshot ua_tip_purse
+hc_mouse 960 1040
+@wait 0.6
+hc_screenshot ua_tip_item
+hc_input_end
+@wait 0.5
+@log === U5 barracks
+hc_key B
+@wait 1
+hc_mouse 700 700
+@wait 0.6
+hc_screenshot ua_barracks
+hc_input_end
+hc_key B
+@wait 1
+@log === U6 item panel
+hc_key I
+@wait 1
+hc_screenshot ua_items
+hc_key I
+@wait 1
+@log === U7 help sheet
+hc_key F1
+@wait 1
+hc_screenshot ua_help
+hc_key F1
+@wait 1
+@log === U8 cooldowns: skills, abilities, a target being chosen
+hc_key X
+hc_key F6
+hc_key F7
+@wait 1
+hc_key F5
+@wait 0.5
+hc_screenshot ua_cooldown
+hc_key Escape
+@wait 0.5
+@log === U9 a fallen hero
+hc_kill_heroes 2
+@wait 3
+hc_screenshot ua_fallen
+@log === U10 a fight
+hc_spawn 6 LemurianMaster 25
+hc_cam follow
+hc_cam dist 30
+@wait 8
+hc_screenshot ua_fight
+@log === U11 every hero fallen
+hc_gold set 0
+hc_kill_heroes
+@wait 2
+hc_screenshot ua_defeat
+@log === END
+hc_status
+disconnect
+@norun
+@wait 4
+@quit

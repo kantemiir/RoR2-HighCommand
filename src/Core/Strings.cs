@@ -77,18 +77,13 @@ namespace HighCommand
             Loc.Add("HIGHCOMMAND_SLOT_EQUIPMENT", "equipment", "экипировка");
 
             // economy / barracks
-            Loc.Add("HIGHCOMMAND_TOP_STAGE", "Stage {0}", "Стадия {0}");
-            Loc.Add("HIGHCOMMAND_TOP_ARMY", "Army {0}/{1} (limit {2})", "Армия {0}/{1} (лимит {2})");
-            Loc.Add("HIGHCOMMAND_TOP_NEXT", "next hero: ${0}", "след. герой: ${0}");
-            Loc.Add("HIGHCOMMAND_TOP_PERMIN", "min", "мин");
-            Loc.Add("HIGHCOMMAND_HELP_BARRACKS", "Barracks: recruit heroes", "Казарма: вербовка героев");
-            Loc.Add("HIGHCOMMAND_BARRACKS_TITLE", "Barracks - next hero costs ${0}   (gold: ${1})", "Казарма - следующий герой стоит ${0}   (золото: ${1})");
+            Loc.Add("HIGHCOMMAND_HELP_BARRACKS", "Barracks: recruit heroes, buy army upgrades", "Казарма: найм героев и улучшения армии");
             Loc.Add("HIGHCOMMAND_BARRACKS_NAME", "Barracks", "Казарма");
-            Loc.Add("HIGHCOMMAND_BARRACKS_INFO", "next hero <color=#FFD94A>${0}</color>      gold <color=#FFD94A>${1}</color>",
-                "следующий герой <color=#FFD94A>${0}</color>      золото <color=#FFD94A>${1}</color>");
-            Loc.Add("HIGHCOMMAND_BARRACKS_HINT","Click a survivor to recruit them. Esc closes this window.", "Нажмите на выжившего, чтобы нанять. Esc закрывает окно.");
-            Loc.Add("HIGHCOMMAND_RECRUIT_BUY", "Recruit - ${0}", "Нанять - ${0}");
-            Loc.Add("HIGHCOMMAND_RECRUIT_PRICE", "${0}", "${0}");
+            Loc.Add("HIGHCOMMAND_BARRACKS_NOTE", "next hero <color={2}>${0}</color>    purse <color=#FFFCC4>${1}</color>",
+                "следующий герой <color={2}>${0}</color>    казна <color=#FFFCC4>${1}</color>");
+            Loc.Add("HIGHCOMMAND_BARRACKS_HINT", "Click a survivor to recruit them. Esc closes the window.", "Нажмите на выжившего, чтобы нанять. Esc закрывает окно.");
+            Loc.Add("HIGHCOMMAND_BARRACKS_OWNED", "In the army", "В армии");
+            Loc.Add("HIGHCOMMAND_BARRACKS_FULL", "army full", "армия полна");
             Loc.Add("HIGHCOMMAND_RECRUIT_LOCKED", "Locked", "Закрыт");
             Loc.Add("HIGHCOMMAND_RECRUIT_NOTALLOWED", "Unavailable", "Недоступен");
             Loc.Add("HIGHCOMMAND_RECRUIT_OWNED", "In the army", "Уже в армии");
@@ -105,9 +100,7 @@ namespace HighCommand
             Loc.Add("HIGHCOMMAND_UPGRADE_2_DESC", "+0.6 health regeneration per second per level, growing with the hero's level.", "+0,6 здоровья в секунду за уровень, растёт с уровнем героя.");
             Loc.Add("HIGHCOMMAND_UPGRADE_3_NAME", "Logistics", "Логистика");
             Loc.Add("HIGHCOMMAND_UPGRADE_3_DESC", "+8% movement speed for every hero per level.", "+8% скорости бега каждому герою за уровень.");
-            Loc.Add("HIGHCOMMAND_UPGRADE_HEADER", "Army upgrades - every hero, recruits too", "Улучшения армии - для всех героев, и новых тоже");
-            Loc.Add("HIGHCOMMAND_UPGRADE_BUTTON", "{0} {1}/{2}\n${3}", "{0} {1}/{2}\n${3}");
-            Loc.Add("HIGHCOMMAND_UPGRADE_BUTTON_MAX", "{0} {1}/{1}\nMAX", "{0} {1}/{1}\nМАКС.");
+            Loc.Add("HIGHCOMMAND_UPGRADE_HEADER", "Army upgrades: every hero, recruits too", "Улучшения армии: для всех героев, и новых тоже");
             Loc.Add("HIGHCOMMAND_UPGRADE_LEVEL", "level {0}/{1}", "ур. {0}/{1}");
             Loc.Add("HIGHCOMMAND_UPGRADE_MAXSHORT", "MAX", "МАКС.");
             Loc.Add("HIGHCOMMAND_DISTANCE", "{0} m", "{0} м");
@@ -115,6 +108,7 @@ namespace HighCommand
             Loc.Add("HIGHCOMMAND_UPGRADE_DONE", "{0}: level {1}", "{0}: уровень {1}");
             Loc.Add("HIGHCOMMAND_RANK_UP", "{0} is now a veteran: rank {1} (+10% damage, +5 armor per rank)", "{0}: ранг ветерана {1} (+10% урона и +5 брони за ранг)");
             Loc.Add("HIGHCOMMAND_RANK_INFO", "Veteran rank {0} ({1} kills). Next rank at {2} kills.", "Ранг ветерана {0} ({1} убийств). Следующий ранг: {2} убийств.");
+            Loc.Add("HIGHCOMMAND_RANK_INFO_MAX", "Veteran rank {0} ({1} kills), the highest.", "Ранг ветерана {0} ({1} убийств), высший.");
             Loc.Add("HIGHCOMMAND_ERR_NORUN", "No run in progress", "Забег не идёт");
             Loc.Add("HIGHCOMMAND_ERR_FAILED", "Could not recruit (gold refunded)", "Не удалось нанять (золото возвращено)");
             Loc.Add("HIGHCOMMAND_ERR_NOLINK", "No connection to the host", "Нет связи с хостом");
@@ -158,19 +152,22 @@ namespace HighCommand
                 "Каждый герой получает копию каждого предмета (намного сильнее).");
 
             // command card
-            Loc.Add("HIGHCOMMAND_CARD_TITLE", "Orders: {0}", "Приказы: {0}");
-            Loc.Add("HIGHCOMMAND_CARD_NOSELECTION", "Select heroes to give orders", "Выберите героев для приказов");
-            Loc.Add("HIGHCOMMAND_CARD_AUTO_ON", "Automatic use: ON (the hero uses it by itself)", "Автоприменение: ВКЛ (герой жмёт сам)");
-            Loc.Add("HIGHCOMMAND_CARD_AUTO_OFF", "Automatic use: OFF (only on your command)", "Автоприменение: ВЫКЛ (только по вашей команде)");
-            Loc.Add("HIGHCOMMAND_CMD_ATTACKMOVE", "Attack", "Атака");
-            Loc.Add("HIGHCOMMAND_CMD_ATTACKMOVE_DESC", "Attack-move: go to the clicked point and attack everything met on the way.",
-                "Атака-движение: идти в указанную точку и атаковать всех по пути.");
+            Loc.Add("HIGHCOMMAND_CARD_NOSELECTION", "Nobody selected", "Никто не выбран");
+            Loc.Add("HIGHCOMMAND_CARD_AUTO_ON", "Automatic use: on (the hero uses it by itself)", "Автоприменение: вкл. (герой применяет сам)");
+            Loc.Add("HIGHCOMMAND_CARD_AUTO_OFF", "Automatic use: off (only on your command)", "Автоприменение: выкл. (только по вашей команде)");
+            Loc.Add("HIGHCOMMAND_CARD_SKILL_KEYS", "{0} use it now    {1} automatic use on / off", "{0} применить    {1} автоприменение вкл. / выкл.");
+            Loc.Add("HIGHCOMMAND_CMD_ATTACKMOVE", "Attack-move", "Атака с ходу");
+            Loc.Add("HIGHCOMMAND_CMD_ATTACKMOVE_DESC", "Go to the clicked point and attack everything met on the way. A second click on the icon puts it away.",
+                "Идти в указанную точку и атаковать всех по пути. Повторный клик по значку — отмена.");
             Loc.Add("HIGHCOMMAND_CMD_STOP", "Stop", "Стоп");
-            Loc.Add("HIGHCOMMAND_CMD_STOP_DESC", "Cancel every order and stand where you are.", "Отменить все приказы и встать на месте.");
-            Loc.Add("HIGHCOMMAND_CMD_CANCEL", "Cancel", "Отмена");
-            Loc.Add("HIGHCOMMAND_CMD_CANCEL_DESC",
-                "While a target is being chosen (attack-move, patrol, an ability): stop choosing it. Otherwise: the selected heroes drop what they were told to do (also queued orders) and stand where they are.",
-                "Пока выбирается цель (атака с ходу, патруль, способность) — отменить выбор. Иначе выбранные герои бросают свои приказы (и очередь) и встают на месте.");
+            Loc.Add("HIGHCOMMAND_CMD_STOP_DESC", "Cancel every order, queued ones too, and stand where you are.", "Отменить все приказы (и очередь) и встать на месте.");
+            Loc.Add("HIGHCOMMAND_CMD_REVIVE", "Revive", "Воскресить");
+            Loc.Add("HIGHCOMMAND_CMD_REVIVE_DESC", "Revive the first fallen hero for ${0}. A click on a fallen hero's card revives that one.",
+                "Воскресить первого павшего героя за ${0}. Клик по карточке павшего воскрешает именно его.");
+            Loc.Add("HIGHCOMMAND_CMD_TELEPORTER", "Teleporter", "Телепорт");
+            Loc.Add("HIGHCOMMAND_CMD_TELEPORTER_DESC",
+                "One command for the whole teleporter: the nearest hero activates it, the army gathers in the zone while it charges, and once it is charged and the boss is dead the army leaves the stage.",
+                "Одна команда на весь телепорт: ближайший герой запускает его, армия собирается в зоне, пока он заряжается, а когда он заряжен и босс убит, армия уходит с этапа.");
             Loc.Add("HIGHCOMMAND_CMD_HOLD", "Hold", "Держать");
             Loc.Add("HIGHCOMMAND_CMD_HOLD_DESC", "Hold position: stand still and fight only what comes into range.",
                 "Держать позицию: стоять и бить только тех, кто подошёл.");
@@ -205,15 +202,17 @@ namespace HighCommand
             Loc.Add("HIGHCOMMAND_HELP_SEC_ARMY", "Army and commander", "Армия и командир");
             Loc.Add("HIGHCOMMAND_HELP_CLOSE", "F1 or Esc to close", "F1 или Esc — закрыть");
             Loc.Add("HIGHCOMMAND_HELP_SEEK","Seek enemies / chests across the map", "Искать врагов / сундуки по всей карте");
-            Loc.Add("HIGHCOMMAND_CMD_STANCE_AGGRESSIVE", "Aggressive", "Агресс.");
-            Loc.Add("HIGHCOMMAND_CMD_STANCE_AGGRESSIVE_DESC", "Stance: chase every enemy that is seen.", "Стойка: преследовать каждого замеченного врага.");
-            Loc.Add("HIGHCOMMAND_CMD_STANCE_DEFENSIVE", "Defensive", "Защита");
-            Loc.Add("HIGHCOMMAND_CMD_STANCE_DEFENSIVE_DESC", "Stance: fight near the post and return afterwards.", "Стойка: драться у своего поста и возвращаться.");
-            Loc.Add("HIGHCOMMAND_CMD_STANCE_PASSIVE", "Passive", "Пассив");
-            Loc.Add("HIGHCOMMAND_CMD_STANCE_PASSIVE_DESC", "Stance: never start a fight, defend only when hit.", "Стойка: не начинать бой, защищаться только когда бьют.");
+            Loc.Add("HIGHCOMMAND_CMD_STANCE_AGGRESSIVE", "Aggressive stance", "Агрессивная стойка");
+            Loc.Add("HIGHCOMMAND_CMD_STANCE_AGGRESSIVE_DESC", "Chase every enemy that is seen.", "Преследовать каждого замеченного врага.");
+            Loc.Add("HIGHCOMMAND_CMD_STANCE_DEFENSIVE", "Defensive stance", "Защитная стойка");
+            Loc.Add("HIGHCOMMAND_CMD_STANCE_DEFENSIVE_DESC", "Fight near the post and return to it afterwards.", "Драться у своего поста и возвращаться к нему.");
+            Loc.Add("HIGHCOMMAND_CMD_STANCE_PASSIVE", "Passive stance", "Пассивная стойка");
+            Loc.Add("HIGHCOMMAND_CMD_STANCE_PASSIVE_DESC", "Never start a fight, defend only when hit.", "Не начинать бой, защищаться только когда бьют.");
 
-            // commander abilities
-            Loc.Add("HIGHCOMMAND_COMMANDER_TITLE", "Commander abilities", "Способности командира");
+            // the commander's own bar
+            Loc.Add("HIGHCOMMAND_MINI_BARRACKS", "Barracks", "Казарма");
+            Loc.Add("HIGHCOMMAND_MINI_ITEMS", "Items", "Предметы");
+            Loc.Add("HIGHCOMMAND_MINI_HELP", "Hotkeys", "Горячие клавиши");
             Loc.Add("HIGHCOMMAND_ABILITY_0_NAME", "Orbital strike", "Удар с орбиты");
             Loc.Add("HIGHCOMMAND_ABILITY_0_DESC", "Three blasts at the clicked point after a short warning. Hits enemies only; the damage grows with the stage.",
                 "Три взрыва в указанной точке после короткого предупреждения. Бьёт только врагов; урон растёт со стадией.");
@@ -241,11 +240,6 @@ namespace HighCommand
             Loc.Add("HIGHCOMMAND_CURSOR_INTERACT", "Use", "Использовать");
             Loc.Add("HIGHCOMMAND_CURSOR_SELECT", "Select", "Выбрать");
             Loc.Add("HIGHCOMMAND_CURSOR_QUEUE", " (queued)", " (в очередь)");
-            Loc.Add("HIGHCOMMAND_MENU_ORDERS", "Orders", "Приказы");
-            Loc.Add("HIGHCOMMAND_MENU_ORDERS_DESC",
-                "Stop, hold, retreat, patrol, focus fire, seek enemies or chests, rally point, formation. The right mouse button already does the rest: move, attack, follow, use.",
-                "Стоп, держать, отход, патруль, фокус, поиск врагов и сундуков, точка сбора, строй. Остальное делает правая кнопка мыши: идти, атаковать, следовать, использовать.");
-            Loc.Add("HIGHCOMMAND_MENU_STANCE", "Stance", "Стойка");
 
             // objects on the map: prices, the hero who goes, why it came back
             Loc.Add("HIGHCOMMAND_PRICE_LUNAR", "{0} lunar", "{0} лун.");
@@ -257,15 +251,22 @@ namespace HighCommand
             Loc.Add("HIGHCOMMAND_LOOT_FAILED_GOLD", "{0}: not enough gold (${1})", "{0}: не хватило золота (${1})");
             Loc.Add("HIGHCOMMAND_LOOT_FAILED_PRICE", "{0} has nothing to pay with", "{0}: нечем заплатить");
             Loc.Add("HIGHCOMMAND_LOOT_FAILED_REACH", "{0} cannot get there", "{0}: не может туда дойти");
-            Loc.Add("HIGHCOMMAND_TOP_CHESTS", "chests {0}/{1}", "сундуки {0}/{1}");
 
-            // the top strip
-            Loc.Add("HIGHCOMMAND_TOP_ARMYLIMIT", "limit {0}", "лимит {0}");
-            Loc.Add("HIGHCOMMAND_TOP_NEXTHERO", "Next hero", "Следующий герой");
+            // the purse, the army's items, the objectives
+            Loc.Add("HIGHCOMMAND_PURSE_TITLE", "The army's purse", "Казна армии");
+            Loc.Add("HIGHCOMMAND_PURSE_TIP", "<style=cIsHealing>+{0}</style> gold a minute.\nNext hero: ${1} (the army has {2} of {3}).\nA revival: ${4}.",
+                "<style=cIsHealing>+{0}</style> золота в минуту.\nСледующий герой: ${1} (в армии {2} из {3}).\nВоскрешение: ${4}.");
+            Loc.Add("HIGHCOMMAND_PURSE_HIRE", "hire <color={0}>${1}</color>", "найм <color={0}>${1}</color>");
+            Loc.Add("HIGHCOMMAND_PURSE_FULL", "army full", "армия полна");
             Loc.Add("HIGHCOMMAND_TOP_ITEMS", "Items", "Предметы");
-            Loc.Add("HIGHCOMMAND_TOP_ITEMS_COUNT", "the army has {0}", "у армии: {0}");
-            Loc.Add("HIGHCOMMAND_TOP_INCOME", "+{0}/min", "+{0}/мин");
-            Loc.Add("HIGHCOMMAND_TOP_BARRACKS_TIP", "Open the barracks: recruit heroes and buy army upgrades.", "Открыть казарму: нанять героев и купить улучшения армии.");
+            Loc.Add("HIGHCOMMAND_ITEMS_ARMY_COUNT", "The army has {0}.", "У армии: {0}.");
+            Loc.Add("HIGHCOMMAND_ITEMS_OPEN", "who carries what", "у кого что");
+            Loc.Add("HIGHCOMMAND_OBJ_TP_ACTIVATE", "activate", "запустить");
+            Loc.Add("HIGHCOMMAND_OBJ_TP_GATHER", "gather", "собрать");
+            Loc.Add("HIGHCOMMAND_OBJ_TP_LEAVE", "leave the stage", "уйти с этапа");
+            Loc.Add("HIGHCOMMAND_OBJ_IN_ZONE", "in the zone {0}/{1}", "в зоне {0}/{1}");
+            Loc.Add("HIGHCOMMAND_OBJ_CHESTS", "Open the chests ({0}/{1})", "Откройте сундуки ({0}/{1})");
+            Loc.Add("HIGHCOMMAND_OBJ_CHESTS_KEY", "seek", "искать");
 
             // revival and teleporter
             Loc.Add("HIGHCOMMAND_REVIVE_NONE", "Nobody has fallen", "Никто не пал");
@@ -282,31 +283,22 @@ namespace HighCommand
             Loc.Add("HIGHCOMMAND_TP_LEAVING", "The nearest hero goes to leave the stage", "Ближайший герой идёт, чтобы покинуть стадию");
             Loc.Add("HIGHCOMMAND_TP_GATHER", "The army gathers at the teleporter", "Армия собирается у телепорта");
             Loc.Add("HIGHCOMMAND_TP_BUSY", "The teleporter is busy", "Телепорт занят");
-            Loc.Add("HIGHCOMMAND_TP_BTN_ACTIVATE", "Start tele", "Запуск");
-            Loc.Add("HIGHCOMMAND_TP_BTN_GATHER", "Gather", "Собраться");
-            Loc.Add("HIGHCOMMAND_TP_BTN_LEAVE", "Leave", "Уйти");
-            Loc.Add("HIGHCOMMAND_TP_BTN_LEAVING", "...", "...");
-            Loc.Add("HIGHCOMMAND_TP_BTN_NONE", "No tele", "Нет");
-            Loc.Add("HIGHCOMMAND_TP_TITLE", "Teleporter", "Телепорт");
-            Loc.Add("HIGHCOMMAND_TP_DESC", "One button for the whole teleporter routine: the nearest hero activates it, the army gathers inside the zone while it charges, and once it is charged and the boss is dead the same button takes the army to the next stage.",
-                "Одна кнопка на весь телепорт: ближайший герой запускает его, армия собирается в зоне, пока он заряжается, а когда он заряжен и босс убит, та же кнопка уводит армию на следующую стадию.");
-            Loc.Add("HIGHCOMMAND_TP_STATE_IDLE", "Teleporter: click or [{0}] to start", "Телепорт: клик или [{0}] — запуск");
-            Loc.Add("HIGHCOMMAND_TP_STATE_CHARGING", "Teleporter charging: {0}%", "Телепорт заряжается: {0}%");
-            Loc.Add("HIGHCOMMAND_TP_STATE_BOSS", "Zone full - kill the boss!", "Зона заряжена - убейте босса!");
-            Loc.Add("HIGHCOMMAND_TP_STATE_CHARGED", "Charged! Click or [{0}] to leave", "Заряжен! Клик или [{0}] — уйти");
-            Loc.Add("HIGHCOMMAND_TP_STATE_LEAVING", "Leaving the stage...", "Уходим со стадии...");
-            Loc.Add("HIGHCOMMAND_DEFEAT_CAN_REVIVE", "ALL HEROES HAVE FALLEN! Revive one within {0} s [{1}] or the run is lost (or click here)",
-                "ВСЕ ГЕРОИ ПАЛИ! Воскресите одного за {0} с [{1}], иначе забег проигран (или нажмите сюда)");
-            Loc.Add("HIGHCOMMAND_DEFEAT_AUTO_REVIVE", "ALL HEROES HAVE FALLEN! Automatic revival in {0} s (${1}), or press [{2}] now (or click here)",
-                "ВСЕ ГЕРОИ ПАЛИ! Автовоскрешение через {0} с (${1}) или [{2}] сразу (или нажмите сюда)");
-            Loc.Add("HIGHCOMMAND_DEFEAT_BROKE", "ALL HEROES HAVE FALLEN and there is no gold to revive: the run ends in {0} s",
-                "ВСЕ ГЕРОИ ПАЛИ, а золота на воскрешение нет: забег закончится через {0} с");
+            Loc.Add("HIGHCOMMAND_DEFEAT_CAN_REVIVE", "All heroes have fallen! Revive one within {0} s ({1}) or the run is lost",
+                "Все герои пали! Воскресите одного за {0} с ({1}), иначе забег проигран");
+            Loc.Add("HIGHCOMMAND_DEFEAT_AUTO_REVIVE", "All heroes have fallen! Revival in {0} s for ${1}, or now: {2}",
+                "Все герои пали! Воскрешение через {0} с за ${1}, или сразу: {2}");
+            Loc.Add("HIGHCOMMAND_DEFEAT_BROKE", "All heroes have fallen and there is no gold to revive: the run ends in {0} s",
+                "Все герои пали, а золота на воскрешение нет: забег закончится через {0} с");
+            Loc.Add("HIGHCOMMAND_DEFEAT_TIP_TITLE", "Revival", "Воскрешение");
+            Loc.Add("HIGHCOMMAND_DEFEAT_TIP", "A click revives the first fallen hero for ${0}.", "Клик воскрешает первого павшего героя за ${0}.");
 
             // roster
-            Loc.Add("HIGHCOMMAND_ROSTER_REVIVE", "Revive: ${0}", "Воскресить: ${0}");
-            Loc.Add("HIGHCOMMAND_ROSTER_FALLEN", "Fallen. Click to revive for ${0}.", "Пал. Нажмите, чтобы воскресить за ${0}.");
-            Loc.Add("HIGHCOMMAND_ROSTER_HINT", "Click: select. Shift+click: add to the selection. Double click: fly the camera to the hero.",
-                "Клик: выбрать. Shift+клик: добавить. Двойной клик: перелететь камерой к герою.");
+            Loc.Add("HIGHCOMMAND_ROSTER_REVIVE", "revive <color={0}>${1}</color>", "воскресить <color={0}>${1}</color>");
+            Loc.Add("HIGHCOMMAND_ROSTER_FALLEN", "Fallen. A click revives them for ${0}.", "Пал. Клик воскрешает за ${0}.");
+            Loc.Add("HIGHCOMMAND_ROSTER_HINT", "Click: select. Shift+click: add. Double click: fly the camera there.",
+                "Клик: выбрать. Shift+клик: добавить. Двойной клик: камера к герою.");
+            Loc.Add("HIGHCOMMAND_ROSTER_STANCE", "Stance:", "Стойка:");
+            Loc.Add("HIGHCOMMAND_ROSTER_ORDER", "Order:", "Приказ:");
             Loc.Add("HIGHCOMMAND_ORDER_MOVE", "moving", "идёт");
             Loc.Add("HIGHCOMMAND_ORDER_ATTACKMOVE", "attack-move", "атака-движение");
             Loc.Add("HIGHCOMMAND_ORDER_ATTACK", "attacking", "атакует");
@@ -322,10 +314,10 @@ namespace HighCommand
             // inventory
             Loc.Add("HIGHCOMMAND_HELP_INVENTORY", "Items: who carries what, drag to give", "Предметы: у кого что, перетащите, чтобы передать");
             Loc.Add("HIGHCOMMAND_INV_TITLE", "Army items ({0} total)", "Предметы армии (всего {0})");
-            Loc.Add("HIGHCOMMAND_INV_HINT_SPLIT", "Drag an item onto another hero to give it. Shift = the whole stack. Esc closes.",
-                "Перетащите предмет на другого героя, чтобы отдать. Shift - вся стопка. Esc закрывает.");
-            Loc.Add("HIGHCOMMAND_INV_HINT_MIRROR", "Mirror mode: every hero has every item, nothing to move. Esc closes.",
-                "Режим «зеркало»: у каждого героя есть все предметы, передавать нечего. Esc закрывает.");
+            Loc.Add("HIGHCOMMAND_INV_HINT_SPLIT", "Drag an item onto another hero to give it; Shift: the whole stack",
+                "Перетащите предмет на другого героя, чтобы отдать; Shift — вся стопка");
+            Loc.Add("HIGHCOMMAND_INV_HINT_MIRROR", "Mirror: every hero has every item, nothing to hand over",
+                "Зеркало: у каждого героя есть все предметы, передавать нечего");
             Loc.Add("HIGHCOMMAND_INV_AUTO", "Auto-distribute", "Раздать заново");
             Loc.Add("HIGHCOMMAND_INV_AUTO_DONE", "Items redistributed by role", "Предметы розданы заново по ролям");
             Loc.Add("HIGHCOMMAND_INV_EMPTY", "no items yet", "предметов пока нет");

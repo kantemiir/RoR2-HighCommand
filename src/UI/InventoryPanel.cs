@@ -11,27 +11,32 @@ using UnityEngine.UI;
 namespace HighCommand.UI
 {
     /// <summary>
-    /// "Who carries what": one row per hero with their items and equipment. Drag an item (Shift: the whole stack) onto
-    /// another hero's row to hand it over; drag equipment to swap; the footer shows spare equipment and a button that
-    /// deals everything out again by role. Reads the heroes' inventories, which the game replicates to every machine.
+    /// "Who carries what", laid out as the stock scoreboard (Tab): one slate strip per hero with the portrait in a dark
+    /// box, the name, the items in a long dark box and the equipment in its own box. Drag an item (Shift: the whole
+    /// stack) onto another hero's strip to hand it over; drag equipment to swap; under the strips the spare equipment and
+    /// a button that deals everything out again by role. Reads the heroes' inventories, which the game replicates.
     /// </summary>
     internal sealed class InventoryPanel
     {
-        private const float PanelW = 1240f;
-        private const float HeaderH = 66f;
-        private const float FooterH = 84f;
-        private const float MaxPanelH = 980f;
+        private const float BodyW = 1180f;
+        private const float MaxBodyH = 820f;
+        private const float StripPad = 6f;
+        private const float MinStripH = 64f;
         private const float RowGap = 6f;
-        private const float LeftBlockW = 250f;
-        private const float Margin = 18f;
-        private static readonly float[] CellSizes = { 46f, 40f, 34f, 28f };
+        private const float NameW = 210f;
+        private const float EquipSize = 52f, EquipPitch = 56f;
+        private const float FooterH = 64f;
+        private const float CellGap = 4f;
+        private static readonly float[] CellSizes = { 48f, 42f, 36f, 30f };
+
+        private static readonly Color DropTarget = new Color(Theme.ButtonHover.r, Theme.ButtonHover.g, Theme.ButtonHover.b, 0.55f);
+        private static readonly Color EmptySlot = new Color(1f, 1f, 1f, 0.12f);
 
         private sealed class Cell
         {
             internal RectTransform root;
-            internal Image frame;
-            internal Image fill;
             internal RawImage icon;
+            internal Image outline;
             internal TextMeshProUGUI count;
             internal ItemIndex item = ItemIndex.None;
             internal EquipmentIndex equipment = EquipmentIndex.None;
@@ -44,31 +49,31 @@ namespace HighCommand.UI
         {
             internal Hero hero;
             internal RectTransform root;
-            internal Image frame;
+            internal Image strip;
+            internal Image itemsBox;
+            internal Image equipBox;
             internal RawImage portrait;
             internal TextMeshProUGUI name;
             internal TextMeshProUGUI role;
-            internal TextMeshProUGUI info;
             internal TextMeshProUGUI more;
             internal TextMeshProUGUI empty;
             internal readonly List<Cell> equipCells = new List<Cell>();
             internal readonly List<Cell> cells = new List<Cell>();
             internal readonly List<KeyValuePair<ItemIndex, int>> items = new List<KeyValuePair<ItemIndex, int>>();
             internal float height;
+            internal int stripState = -1;
         }
 
-        private readonly RectTransform root;
-        private readonly TextMeshProUGUI title;
-        private readonly TextMeshProUGUI hint;
+        private readonly Window window;
         private readonly RectTransform rowsHost;
         private readonly RectTransform footer;
         private readonly TextMeshProUGUI spareLabel;
-        private readonly RectTransform autoButton;
-        private readonly Image autoBack;
-        private readonly TextMeshProUGUI autoLabel;
+        private readonly MenuButton autoButton;
         private readonly RectTransform ghost;
         private readonly RawImage ghostIcon;
         private readonly TextMeshProUGUI ghostCount;
+        private readonly HoverOutline cellHover;
+        private Cell hoverCell;
 
         private static readonly IReadOnlyList<Hero> NoHeroes = new List<Hero>();
         private static readonly IReadOnlyList<EquipmentIndex> NoEquipment = new List<EquipmentIndex>();
@@ -86,106 +91,90 @@ namespace HighCommand.UI
         private Hero dragFrom;
         private int dragCount;
 
-        internal bool Visible => root && root.gameObject.activeSelf;
+        internal bool Visible => window.Visible;
 
         internal InventoryPanel(Transform parent)
         {
-            root = UiKit.NewPanel("Inventory", parent, UiKit.PanelDark);
-            UiKit.Place(root, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 10f), new Vector2(PanelW, 600f));
+            window = new Window(parent, "Inventory", new Vector2(BodyW + 2f * (Window.Pad + 3f), 600f));
 
-            // the title strip in the style of the barracks: accent bar, title, the hint on the right
-            Image bar = UiKit.NewImage("HeadBar", root, UiKit.White, UiKit.Accent);
-            UiKit.Place(bar.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(Margin, -20f), new Vector2(4f, 24f));
-            title = UiKit.NewText("Title", root, "", 26f, UiKit.Text, TextAlignmentOptions.Left);
-            UiKit.Place(title.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(Margin + 14f, -14f), new Vector2(420f, 36f));
+            rowsHost = UiKit.NewRect("Rows", window.Body);
+            rowsHost.anchorMin = rowsHost.anchorMax = new Vector2(0f, 1f);
+            rowsHost.pivot = new Vector2(0f, 1f);
 
-            hint = UiKit.NewText("Hint", root, "", 16f, UiKit.TextDim, TextAlignmentOptions.Right);
-            UiKit.Place(hint.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-Margin, -20f), new Vector2(PanelW - 2f * Margin - 440f, 26f));
-            hint.enableAutoSizing = true;
-            hint.fontSizeMin = 11f;
-            hint.fontSizeMax = 16f;
-            Image rule = UiKit.NewImage("HeadLine", root, UiKit.White, new Color(0.6f, 0.7f, 0.82f, 0.22f));
-            UiKit.Place(rule.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(Margin, -HeaderH + 10f), new Vector2(PanelW - 2f * Margin, 1f));
+            footer = UiKit.NewRect("Footer", window.Body);
+            footer.anchorMin = new Vector2(0f, 0f);
+            footer.anchorMax = new Vector2(1f, 0f);
+            footer.pivot = new Vector2(0.5f, 0f);
+            footer.offsetMin = Vector2.zero;
+            footer.offsetMax = new Vector2(0f, FooterH);
 
-            rowsHost = UiKit.NewRect("Rows", root);
-            UiKit.Place(rowsHost, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(Margin, -HeaderH), new Vector2(PanelW - 2f * Margin, 400f));
+            spareLabel = UiKit.NewText("SpareLabel", footer, "", 16f, Theme.TextSub, TextAlignmentOptions.TopLeft);
+            UiKit.Place(spareLabel.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), Vector2.zero, new Vector2(600f, 20f));
 
-            footer = UiKit.NewRect("Footer", root);
-            UiKit.Place(footer, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(Margin, 10f), new Vector2(PanelW - 2f * Margin, FooterH - 14f));
+            autoButton = new MenuButton(footer, "AutoButton", new Vector2(260f, 44f), 20f);
+            autoButton.Root.anchorMin = autoButton.Root.anchorMax = new Vector2(1f, 0f);
+            autoButton.Root.pivot = new Vector2(1f, 0f);
+            autoButton.Root.anchoredPosition = new Vector2(0f, 4f);
 
-            spareLabel = UiKit.NewText("SpareLabel", footer, "", 18f, UiKit.TextDim, TextAlignmentOptions.Left);
-            UiKit.Place(spareLabel.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, -6f), new Vector2(760f, 26f));
-
-            autoButton = UiKit.NewRect("AutoButton", footer);
-            UiKit.Place(autoButton, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(0f, 0f), new Vector2(230f, 44f));
-            autoBack = autoButton.gameObject.AddComponent<Image>();
-            UiKit.StyleOutline(autoBack, 8f);
-            autoBack.color = new Color(0.16f, 0.2f, 0.27f, 1f);
-            autoBack.raycastTarget = false;
-            autoLabel = UiKit.NewText("Label", autoButton, "", 18f, UiKit.Text, TextAlignmentOptions.Center);
-            UiKit.Stretch(autoLabel.rectTransform);
-
-            ghost = UiKit.NewRect("DragGhost", root);
-            ghost.anchorMin = ghost.anchorMax = new Vector2(0f, 0f);
+            ghost = UiKit.NewRect("DragGhost", window.Panel);
+            ghost.anchorMin = ghost.anchorMax = new Vector2(0.5f, 0.5f);
             ghost.pivot = new Vector2(0.5f, 0.5f);
-            ghost.sizeDelta = new Vector2(52f, 52f);
+            ghost.sizeDelta = new Vector2(56f, 56f);
             ghostIcon = UiKit.NewRawImage("Icon", ghost, null, new Color(1f, 1f, 1f, 0.9f));
             UiKit.Stretch(ghostIcon.rectTransform);
-            ghostCount = UiKit.NewText("Count", ghost, "", 20f, UiKit.Gold, TextAlignmentOptions.BottomRight);
+            ghostCount = UiKit.NewText("Count", ghost, "", 20f, Theme.Text, TextAlignmentOptions.TopRight);
+            ghostCount.fontStyle = FontStyles.Bold;
             UiKit.Stretch(ghostCount.rectTransform);
             ghost.gameObject.SetActive(false);
 
+            // one settling frame, moved onto whatever cell the pointer rests on
+            RectTransform hoverHost = UiKit.NewRect("CellHover", window.Panel);
+            hoverHost.anchorMin = hoverHost.anchorMax = new Vector2(0.5f, 0.5f);
+            cellHover = HoverOutline.ForIcon(hoverHost, 2f);
+            hoverHostRect = hoverHost;
+
             ClientInput.RegisterUiHitTest(Contains);
-            root.gameObject.SetActive(false);
         }
 
-        internal bool Contains(Vector2 screenPoint) => Visible && UiKit.Contains(root, screenPoint);
+        private readonly RectTransform hoverHostRect;
+
+        internal bool Contains(Vector2 screenPoint) => window.Contains(screenPoint);
 
         internal void Toggle()
         {
-            if (!root) return;
-            bool show = !root.gameObject.activeSelf;
-            if (show)
-            {
-                lastSignature = int.MinValue;
-                root.SetAsLastSibling();
-            }
-            root.gameObject.SetActive(show);
-            if (!show) CancelDrag();
+            if (window.Visible) Hide();
+            else Show();
+        }
+
+        internal void Show()
+        {
+            if (window.Visible) return;
+            lastSignature = int.MinValue;
+            window.Title.text = Loc.Get("HIGHCOMMAND_TOP_ITEMS");
+            window.Show();
+            UiSound.Click();
         }
 
         internal void Hide()
         {
-            if (!root) return;
             CancelDrag();
-            root.gameObject.SetActive(false);
+            window.Hide();
         }
 
         internal void Destroy()
         {
             ClientInput.UnregisterUiHitTest(Contains);
-            if (root) UnityEngine.Object.Destroy(root.gameObject);
+            window.Destroy();
         }
 
         // ---- data helpers ---------------------------------------------------------------------------------
 
         /// <summary>The host's sharing mode (replicated), not this machine's own config value.</summary>
-        private static bool IsMirror(HcState state)
-        {
-            return state != null ? state.ItemMirror : LobbyRules.ItemMirror;
-        }
+        private static bool IsMirror(HcState state) => state != null ? state.ItemMirror : LobbyRules.ItemMirror;
 
-        private static PickupDef PickupOf(ItemIndex item)
-        {
-            PickupIndex index = PickupCatalog.FindPickupIndex(item);
-            return index.isValid ? PickupCatalog.GetPickupDef(index) : null;
-        }
+        private static PickupDef PickupOf(ItemIndex item) => PickupIcons.DefOf(item);
 
-        private static PickupDef PickupOf(EquipmentIndex equipment)
-        {
-            PickupIndex index = PickupCatalog.FindPickupIndex(equipment);
-            return index.isValid ? PickupCatalog.GetPickupDef(index) : null;
-        }
+        private static PickupDef PickupOf(EquipmentIndex equipment) => PickupIcons.DefOf(equipment);
 
         private static void CollectItems(Hero hero, List<KeyValuePair<ItemIndex, int>> into)
         {
@@ -238,66 +227,61 @@ namespace HighCommand.UI
 
         // ---- building ----------------------------------------------------------------------------------------
 
-        private Cell NewCell(Transform parent, string name)
+        private static Cell NewCell(Transform parent, string name)
         {
             var c = new Cell();
             c.root = UiKit.NewRect(name, parent);
             c.root.anchorMin = c.root.anchorMax = new Vector2(0f, 1f);
             c.root.pivot = new Vector2(0f, 1f);
-            c.frame = c.root.gameObject.AddComponent<Image>();
-            c.frame.sprite = UiKit.White;
-            c.frame.color = UiKit.Border;
-            c.frame.raycastTarget = false;
-            c.fill = UiKit.NewImage("Fill", c.root, UiKit.White, new Color(0.03f, 0.04f, 0.06f, 1f));
-            UiKit.Stretch(c.fill.rectTransform, 2, 2, 2, 2);
+            c.outline = UiKit.Sliced("Slot", c.root, HudArt.Outline, EmptySlot);
+            UiKit.Stretch(c.outline.rectTransform);
             c.icon = UiKit.NewRawImage("Icon", c.root, null, Color.white);
-            UiKit.Stretch(c.icon.rectTransform, 3, 3, 3, 3);
-            c.count = UiKit.NewText("Count", c.root, "", 16f, UiKit.Text, TextAlignmentOptions.BottomRight);
-            UiKit.Stretch(c.count.rectTransform, 0, 1, 3, 0);
+            UiKit.Stretch(c.icon.rectTransform);
+            // the stock stack count: "x3" in the top right corner
+            c.count = UiKit.NewText("Count", c.root, "", 16f, Theme.Text, TextAlignmentOptions.TopRight);
+            c.count.fontStyle = FontStyles.Bold;
+            UiKit.Stretch(c.count.rectTransform, 0f, 0f, 1f, 0f);
             c.count.enableAutoSizing = true;
             c.count.fontSizeMin = 10f;
-            c.count.fontSizeMax = 18f;
+            c.count.fontSizeMax = 16f;
             return c;
         }
 
         private Row NewRow(Hero hero)
         {
             var row = new Row { hero = hero };
-            row.root = UiKit.NewRect("Row", rowsHost);
+            row.strip = UiKit.Sliced("Row", rowsHost, HudArt.CleanButton, Theme.Strip);
+            row.root = row.strip.rectTransform;
             row.root.anchorMin = row.root.anchorMax = new Vector2(0f, 1f);
             row.root.pivot = new Vector2(0f, 1f);
 
-            row.frame = row.root.gameObject.AddComponent<Image>();
-            UiKit.StyleOutline(row.frame, 9f);
-            row.frame.color = new Color(0.5f, 0.6f, 0.72f, 0.4f);
-            row.frame.raycastTarget = false;
-            UiKit.NewFill("Fill", row.root, new Color(0.07f, 0.09f, 0.13f, 0.96f), 9f);
-
-            row.portrait = UiKit.NewRawImage("Portrait", row.root, null, Color.white);
-            UiKit.Place(row.portrait.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(10f, -10f), new Vector2(60f, 60f));
+            // the portrait in a dark box, as the class icon of a scoreboard strip
+            Image classBox = UiKit.Sliced("ClassBox", row.root, HudArt.ClusterFrame, Theme.StripBox);
+            UiKit.Place(classBox.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(StripPad, 0f), new Vector2(52f, 52f));
+            row.portrait = UiKit.NewRawImage("Portrait", classBox.rectTransform, null, Color.white);
+            UiKit.Stretch(row.portrait.rectTransform, 3f, 3f, 3f, 3f);
             if (hero.Survivor && hero.Survivor.bodyPrefab)
             {
                 CharacterBody b = hero.Survivor.bodyPrefab.GetComponent<CharacterBody>();
                 if (b) row.portrait.texture = b.portraitIcon;
             }
 
-            row.name = UiKit.NewText("Name", row.root, hero.DisplayName, 19f, UiKit.Text, TextAlignmentOptions.Left);
-            UiKit.Place(row.name.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(78f, -10f), new Vector2(LeftBlockW - 84f, 26f));
+            row.name = UiKit.NewText("Name", row.root, hero.DisplayName, 22f, Theme.Text, TextAlignmentOptions.BottomLeft);
+            UiKit.Place(row.name.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0f), new Vector2(StripPad + 60f, 0f), new Vector2(NameW - 66f, 28f));
             row.name.enableAutoSizing = true;
             row.name.fontSizeMin = 12f;
-            row.name.fontSizeMax = 19f;
-            row.name.enableWordWrapping = false;
-
+            row.name.fontSizeMax = 22f;
             string roleToken = HeroRoles.RoleToken(hero.Survivor ? hero.Survivor.cachedName : "");
-            row.role = UiKit.NewText("Role", row.root, Loc.Get(roleToken), 14f, UiKit.TextDim, TextAlignmentOptions.Left);
-            UiKit.Place(row.role.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(78f, -35f), new Vector2(LeftBlockW - 84f, 20f));
+            row.role = UiKit.NewText("Role", row.root, Loc.Get(roleToken), 15f, Theme.TextSub, TextAlignmentOptions.TopLeft);
+            UiKit.Place(row.role.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 1f), new Vector2(StripPad + 60f, -1f), new Vector2(NameW - 66f, 20f));
 
-            row.info = UiKit.NewText("Info", row.root, "", 14f, UiKit.Gold, TextAlignmentOptions.Left);
-            UiKit.Place(row.info.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(78f, -56f), new Vector2(LeftBlockW - 84f, 20f));
+            row.equipBox = UiKit.Sliced("EquipBox", row.root, HudArt.ClusterFrame, Theme.StripBox);
+            row.itemsBox = UiKit.Sliced("ItemsBox", row.root, HudArt.ClusterFrame, Theme.StripBox);
 
-            row.empty = UiKit.NewText("Empty", row.root, Loc.Get("HIGHCOMMAND_INV_EMPTY"), 16f, new Color(0.55f, 0.6f, 0.68f, 0.8f), TextAlignmentOptions.Left);
-            row.empty.fontStyle = FontStyles.Italic;
-            row.more = UiKit.NewText("More", row.root, "", 18f, UiKit.Accent, TextAlignmentOptions.Right);
+            row.empty = UiKit.NewText("Empty", row.itemsBox.rectTransform, Loc.Get("HIGHCOMMAND_INV_EMPTY"), 15f, Theme.TextMuted, TextAlignmentOptions.MidlineLeft);
+            UiKit.Stretch(row.empty.rectTransform, 12f, 0f, 12f, 0f);
+            row.more = UiKit.NewText("More", row.itemsBox.rectTransform, "", 15f, Theme.TextHud, TextAlignmentOptions.BottomRight);
+            UiKit.Stretch(row.more.rectTransform, 6f, 3f, 8f, 3f);
             return row;
         }
 
@@ -309,6 +293,12 @@ namespace HighCommand.UI
                 bool stillThere = false;
                 for (int k = 0; k < heroes.Count; k++) if (heroes[k] == rows[i].hero) { stillThere = true; break; }
                 if (stillThere) continue;
+                if (hoverHostRect && rows[i].root && hoverHostRect.IsChildOf(rows[i].root))
+                {
+                    // the hover frame sits on one of this row's cells: keep it, the row goes
+                    hoverHostRect.SetParent(window.Panel, false);
+                    hoverCell = null;
+                }
                 if (rows[i].root) UnityEngine.Object.Destroy(rows[i].root.gameObject);
                 rows.RemoveAt(i);
             }
@@ -326,59 +316,61 @@ namespace HighCommand.UI
             SyncRows(heroes);
             foreach (Row r in rows) CollectItems(r.hero, r.items);
 
-            // equipment places per hero (MUL-T has two): the item grid starts after the widest of them
-            const float EquipSize = 50f, EquipPitch = 54f;
+            // equipment places per hero (MUL-T has two): the item box starts after the widest of them
             int maxSlots = 1;
             foreach (Row r in rows)
             {
                 CharacterMaster mm = r.hero.Master;
                 maxSlots = Mathf.Max(maxSlots, HeroEquipment.SlotCount(mm ? mm.inventory : null));
             }
+            float equipW = maxSlots * EquipPitch + 6f;
+            float itemsX = NameW;
+            float itemsW = BodyW - itemsX - equipW - StripPad * 2f;
+            float gridW = itemsW - 12f;
 
-            // pick the biggest icon size at which everything fits
-            float gridX = LeftBlockW + maxSlots * EquipPitch + 2f;
-            float gridW = PanelW - 2f * Margin - gridX - 12f;
-            float avail = MaxPanelH - HeaderH - FooterH;
+            // the biggest icon size at which everything fits; the smallest caps the lines and counts the rest
+            float avail = MaxBodyH - FooterH - Theme.GroupGap;
             float size = CellSizes[CellSizes.Length - 1];
             int maxLines = int.MaxValue;
             foreach (float candidate in CellSizes)
             {
-                int perLine = Mathf.Max(1, Mathf.FloorToInt(gridW / (candidate + 4f)));
+                int perLine = Mathf.Max(1, Mathf.FloorToInt(gridW / (candidate + CellGap)));
                 float total = 0f;
                 foreach (Row r in rows)
                 {
                     int lines = Mathf.Max(1, (r.items.Count + perLine - 1) / perLine);
-                    total += Mathf.Max(76f, lines * (candidate + 4f) + 14f) + RowGap;
+                    total += Mathf.Max(MinStripH, lines * (candidate + CellGap) + 2f * StripPad + 6f) + RowGap;
                 }
                 size = candidate;
                 if (total <= avail) { maxLines = int.MaxValue; break; }
-                // last candidate: cap the lines instead
-                float per = rows.Count > 0 ? avail / rows.Count - RowGap : 80f;
-                maxLines = Mathf.Max(1, Mathf.FloorToInt((per - 14f) / (candidate + 4f)));
+                float per = rows.Count > 0 ? avail / rows.Count - RowGap : MinStripH;
+                maxLines = Mathf.Max(1, Mathf.FloorToInt((per - 2f * StripPad - 6f) / (candidate + CellGap)));
             }
 
-            int perLineFinal = Mathf.Max(1, Mathf.FloorToInt(gridW / (size + 4f)));
+            int perLineFinal = Mathf.Max(1, Mathf.FloorToInt(gridW / (size + CellGap)));
             float y = 0f;
-            int totalItems = 0;
             foreach (Row r in rows)
             {
                 int count = r.items.Count;
-                foreach (var kv in r.items) totalItems += kv.Value;
-
                 int capacity = maxLines == int.MaxValue ? count : Mathf.Min(count, maxLines * perLineFinal);
                 int hidden = count - capacity;
                 int lines = Mathf.Max(1, (capacity + perLineFinal - 1) / perLineFinal);
-                r.height = Mathf.Max(76f, lines * (size + 4f) + 14f);
+                r.height = Mathf.Max(MinStripH, lines * (size + CellGap) + 2f * StripPad + 6f);
 
                 r.root.anchoredPosition = new Vector2(0f, -y);
-                r.root.sizeDelta = new Vector2(PanelW - 2f * Margin, r.height);
+                r.root.sizeDelta = new Vector2(BodyW, r.height);
                 y += r.height + RowGap;
+
+                UiKit.Place(r.itemsBox.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(itemsX, -StripPad),
+                    new Vector2(itemsW, r.height - 2f * StripPad));
+                UiKit.Place(r.equipBox.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-StripPad, -StripPad),
+                    new Vector2(equipW, r.height - 2f * StripPad));
 
                 // equipment cells, one per place
                 CharacterMaster m = r.hero.Master;
                 Inventory heroInv = m ? m.inventory : null;
                 int slots = HeroEquipment.SlotCount(heroInv);
-                while (r.equipCells.Count < slots) r.equipCells.Add(NewCell(r.root, "Equipment"));
+                while (r.equipCells.Count < slots) r.equipCells.Add(NewCell(r.equipBox.rectTransform, "Equipment"));
                 for (int s = 0; s < r.equipCells.Count; s++)
                 {
                     Cell ec = r.equipCells[s];
@@ -388,19 +380,17 @@ namespace HighCommand.UI
                     ec.slot = s;
                     ec.item = ItemIndex.None;
                     ec.equipment = heroInv ? HeroEquipment.InSlot(heroInv, s) : EquipmentIndex.None;
-                    ec.root.anchoredPosition = new Vector2(LeftBlockW + s * EquipPitch, -8f);
+                    ec.root.anchoredPosition = new Vector2(5f + s * EquipPitch, -Mathf.Round((r.height - 2f * StripPad - EquipSize) * 0.5f));
                     ec.root.sizeDelta = new Vector2(EquipSize, EquipSize);
-
                     PickupDef eqDef = ec.equipment != EquipmentIndex.None ? PickupOf(ec.equipment) : null;
-                    ec.icon.color = PickupIcons.Apply(ec.icon, eqDef) ? Color.white : new Color(1f, 1f, 1f, 0f);
-                    // an empty place is a dim outline, not a black square
-                    ec.frame.color = eqDef != null ? eqDef.baseColor : new Color(0.55f, 0.62f, 0.72f, 0.3f);
-                    ec.fill.color = eqDef != null ? new Color(0.03f, 0.04f, 0.06f, 1f) : new Color(0.03f, 0.04f, 0.06f, 0.55f);
+                    bool shown = PickupIcons.Apply(ec.icon, eqDef);
+                    ec.icon.enabled = shown;
+                    ec.outline.enabled = !shown;   // an empty place is a faint outline, not a black square
                     ec.count.text = "";
                 }
 
                 // item cells
-                while (r.cells.Count < capacity) r.cells.Add(NewCell(r.root, "Item"));
+                while (r.cells.Count < capacity) r.cells.Add(NewCell(r.itemsBox.rectTransform, "Item"));
                 for (int i = 0; i < r.cells.Count; i++)
                 {
                     Cell c = r.cells[i];
@@ -411,22 +401,20 @@ namespace HighCommand.UI
                     c.item = kv.Key;
                     c.equipment = EquipmentIndex.None;
                     int col = i % perLineFinal, line = i / perLineFinal;
-                    c.root.anchoredPosition = new Vector2(gridX + col * (size + 4f), -(7f + line * (size + 4f)));
+                    c.root.anchoredPosition = new Vector2(6f + col * (size + CellGap), -(5f + line * (size + CellGap)));
                     c.root.sizeDelta = new Vector2(size, size);
                     PickupDef def = PickupOf(kv.Key);
-                    c.icon.color = PickupIcons.Apply(c.icon, def) ? Color.white : (def != null ? def.baseColor : Color.gray);
-                    c.frame.color = def != null ? def.baseColor : UiKit.Border;
-                    c.count.text = kv.Value > 1 ? kv.Value.ToString() : "";
+                    bool shown = PickupIcons.Apply(c.icon, def);
+                    c.icon.enabled = true;
+                    c.icon.color = shown ? Color.white : (def != null ? def.baseColor : Color.gray);
+                    c.outline.enabled = false;
+                    c.count.text = kv.Value > 1 ? "x" + kv.Value : "";
                 }
 
                 r.empty.gameObject.SetActive(count == 0);
-                UiKit.Place(r.empty.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(gridX, -26f), new Vector2(400f, 26f));
                 r.more.gameObject.SetActive(hidden > 0);
-                if (hidden > 0)
-                {
-                    r.more.text = Loc.Format("HIGHCOMMAND_INV_MORE", hidden);
-                    UiKit.Place(r.more.rectTransform, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-10f, 6f), new Vector2(160f, 24f));
-                }
+                if (hidden > 0) r.more.text = Loc.Format("HIGHCOMMAND_INV_MORE", hidden);
+                r.stripState = -1;
             }
 
             // spare equipment
@@ -440,31 +428,37 @@ namespace HighCommand.UI
                 c.item = ItemIndex.None;
                 c.equipment = spare[i];
                 c.spareIndex = i;
-                c.root.anchoredPosition = new Vector2(i * 50f, -36f);
-                c.root.sizeDelta = new Vector2(46f, 46f);
+                c.root.anchoredPosition = new Vector2(i * 46f, -22f);
+                c.root.sizeDelta = new Vector2(42f, 42f);
                 PickupDef def = PickupOf(spare[i]);
-                c.icon.color = PickupIcons.Apply(c.icon, def) ? Color.white : Color.gray;
-                c.frame.color = def != null ? def.baseColor : UiKit.Border;
+                bool shown = PickupIcons.Apply(c.icon, def);
+                c.icon.color = shown ? Color.white : Color.gray;
+                c.outline.enabled = false;
                 c.count.text = "";
             }
             spareLabel.text = spare.Count > 0 ? Loc.Get("HIGHCOMMAND_INV_SPARE") : "";
 
-            float panelH = HeaderH + Mathf.Max(0f, y - RowGap) + FooterH;
-            UiKit.Place(root, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 10f), new Vector2(PanelW, panelH));
-            UiKit.Place(rowsHost, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(Margin, -HeaderH), new Vector2(PanelW - 2f * Margin, Mathf.Max(0f, y)));
+            float bodyH = Mathf.Max(0f, y - RowGap) + Theme.GroupGap + FooterH;
+            rowsHost.sizeDelta = new Vector2(BodyW, Mathf.Max(0f, y));
+            rowsHost.anchoredPosition = Vector2.zero;
+            window.SetSize(new Vector2(window.Panel.sizeDelta.x, Window.HeightFor(bodyH)));
+            window.FitToScreen();
 
-            title.text = Loc.Format("HIGHCOMMAND_INV_TITLE", totalItems);
+            int totalItems = 0;
+            foreach (Row r in rows) foreach (var kv in r.items) totalItems += kv.Value;
+            window.Title.text = Loc.Format("HIGHCOMMAND_INV_TITLE", totalItems);
             bool mirror = IsMirror(state);
-            hint.text = Loc.Get(mirror ? "HIGHCOMMAND_INV_HINT_MIRROR" : "HIGHCOMMAND_INV_HINT_SPLIT");
-            autoLabel.text = Loc.Get("HIGHCOMMAND_INV_AUTO");
-            autoButton.gameObject.SetActive(!mirror);
+            window.Note.text = Loc.Get(mirror ? "HIGHCOMMAND_INV_HINT_MIRROR" : "HIGHCOMMAND_INV_HINT_SPLIT");
+            autoButton.Label.text = Loc.Get("HIGHCOMMAND_INV_AUTO");
+            autoButton.Root.gameObject.SetActive(!mirror);
         }
 
-        // ---- per-frame ---------------------------------------------------------------------------------------
+        // ---- per frame ---------------------------------------------------------------------------------------
 
         internal void Tick()
         {
-            if (!Visible) return;
+            window.Tick();
+            if (!window.Visible) return;
 
             // a pause screen or the console in the middle of a drag cancels it (nothing is handed over)
             if (dragging && ClientInput.MouseBlocked) CancelDrag();
@@ -481,43 +475,57 @@ namespace HighCommand.UI
                 catch (Exception e) { Plugin.Log.LogError("InventoryPanel rebuild failed: " + e); }
             }
 
-            Vector2 mouse = ClientInput.Mouse;
+            Vector2 mouse = ClientInput.MouseBlocked ? new Vector2(-1f, -1f) : ClientInput.Mouse;
 
-            // row highlight + dead state
+            // the strip under a dragged item lights up as the stock button does; a fallen hero's strip is darker
             foreach (Row r in rows)
             {
-                bool over = UiKit.Contains(r.root, mouse);
-                bool target = dragging && over && r.hero != dragFrom;
-                r.frame.color = target ? UiKit.Accent : UiKit.Border;
-                UiKit.SetText(r.info, r.hero.IsAlive ? "" : Loc.Get("HIGHCOMMAND_INV_DEAD"));
-                r.info.color = UiKit.Bad;
+                bool target = dragging && r.hero != dragFrom && UiKit.Contains(r.root, mouse);
+                int s = target ? 2 : r.hero.IsAlive ? 1 : 0;
+                if (s == r.stripState) continue;
+                r.stripState = s;
+                r.strip.color = s == 2 ? DropTarget : s == 1 ? Theme.Strip : Theme.ButtonDisabled;
+                r.portrait.color = s == 0 ? new Color(0.4f, 0.4f, 0.4f, 1f) : Color.white;
+                if (s == 0) r.role.text = "<color=" + Theme.HexDeath + ">" + Loc.Get("HIGHCOMMAND_INV_DEAD") + "</color>";
+                else if (s == 1) r.role.text = Loc.Get(HeroRoles.RoleToken(r.hero.Survivor ? r.hero.Survivor.cachedName : ""));
             }
 
             Cell hovered = HoveredCell(mouse);
-
+            TickCellHover(dragging ? null : hovered);
             if (hovered != null && !dragging) ShowCellTooltip(hovered);
 
-            // press -> start dragging
             if (!dragging && hovered != null && ClientInput.MouseDown(0)) BeginDrag(hovered);
-
             if (dragging)
             {
                 PlaceGhost(mouse);
                 if (!ClientInput.MouseHeld(0) || ClientInput.MouseUp(0)) EndDrag(mouse);
             }
 
-            // auto-distribute button
-            if (autoButton.gameObject.activeSelf)
+            if (autoButton.Root.gameObject.activeSelf)
             {
-                bool over = UiKit.Contains(autoButton, mouse);
-                autoBack.color = over ? new Color(0.26f, 0.34f, 0.45f, 1f) : new Color(0.16f, 0.2f, 0.27f, 1f);
-                if (over && !dragging && ClientInput.MouseDown(0))
+                autoButton.Refresh(dragging ? new Vector2(-1f, -1f) : mouse, true);
+                if (autoButton.Clicked(ClientInput.MouseDown(0)))
                 {
                     string error = ArmyService.RedistributeItems();
                     if (error != Net.CommandChannel.Relayed) Toast.Show(error ?? Loc.Get("HIGHCOMMAND_INV_AUTO_DONE"));
                     lastSignature = int.MinValue;
                 }
             }
+        }
+
+        // the white frame follows the hovered cell (one frame for the whole panel)
+        private void TickCellHover(Cell cell)
+        {
+            if (cell != hoverCell)
+            {
+                hoverCell = cell;
+                if (cell != null)
+                {
+                    hoverHostRect.SetParent(cell.root, false);
+                    UiKit.Stretch(hoverHostRect);
+                }
+            }
+            cellHover.Tick(cell != null);
         }
 
         // ---- test hooks (used by the hc_inv_* console commands) -----------------------------------------------
@@ -566,9 +574,10 @@ namespace HighCommand.UI
             foreach (Row r in rows)
             {
                 if (r.hero != hero) continue;
-                // the free part of the row, away from the item cells
+                // the name part of the strip, away from the item cells
                 Vector2 c = CenterOf(r.root);
-                center = new Vector2(c.x + 300f, c.y);
+                Vector3 left = r.root.TransformPoint(new Vector3(r.root.rect.xMin + NameW * 0.6f, 0f, 0f));
+                center = new Vector2(left.x, c.y);
                 return true;
             }
             return false;
@@ -588,6 +597,12 @@ namespace HighCommand.UI
             return null;
         }
 
+        // the texts of the hovered cell are built when it changes, not every frame
+        private Cell tipCell;
+        private int tipCount = -1;
+        private string tipTitle, tipBody;
+        private Color? tipBar;
+
         private void ShowCellTooltip(Cell c)
         {
             if (c.item == ItemIndex.None && c.equipment == EquipmentIndex.None)
@@ -595,17 +610,20 @@ namespace HighCommand.UI
                 Tooltip.Show(Loc.Get("HIGHCOMMAND_INV_EQUIPMENT"), Loc.Get("HIGHCOMMAND_INV_NOEQUIP"));
                 return;
             }
-
-            PickupDef def = c.item != ItemIndex.None ? PickupOf(c.item) : PickupOf(c.equipment);
-            if (def == null) return;
-
-            string body = Language.GetString(def.pickupToken);
-            if (c.item != ItemIndex.None && c.owner != null && c.owner.Master && c.owner.Master.inventory)
+            int n = c.item != ItemIndex.None && c.owner != null && c.owner.Master && c.owner.Master.inventory
+                ? c.owner.Master.inventory.GetItemCountPermanent(c.item) : 0;
+            if (c != tipCell || n != tipCount || tipTitle == null)
             {
-                int n = c.owner.Master.inventory.GetItemCountPermanent(c.item);
-                body += "\n\n" + Loc.Format("HIGHCOMMAND_INV_COUNT", n);
+                PickupDef def = c.item != ItemIndex.None ? PickupOf(c.item) : PickupOf(c.equipment);
+                if (def == null) return;
+                tipCell = c;
+                tipCount = n;
+                tipTitle = Language.GetString(def.nameToken);
+                tipBody = Language.GetString(def.pickupToken);
+                if (n > 0) tipBody += "\n\n<style=cSub>" + Loc.Format("HIGHCOMMAND_INV_COUNT", n) + "</style>";
+                tipBar = def.darkColor;
             }
-            Tooltip.Show(Language.GetString(def.nameToken), body, def.baseColor);
+            Tooltip.Show(tipTitle, tipBody, tipBar);
         }
 
         private void BeginDrag(Cell c)
@@ -635,8 +653,7 @@ namespace HighCommand.UI
         private void PlaceGhost(Vector2 mouse)
         {
             // the ghost is a child of the panel (pivot and anchors at the centre): screen point -> panel space
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(root, mouse, null, out Vector2 local);
-            ghost.anchorMin = ghost.anchorMax = new Vector2(0.5f, 0.5f);
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(window.Panel, mouse, null, out Vector2 local);
             ghost.anchoredPosition = local;
         }
 
@@ -676,6 +693,7 @@ namespace HighCommand.UI
                 {
                     string from = dragFrom != null ? dragFrom.DisplayName : Loc.Get("HIGHCOMMAND_INV_EQUIPMENT");
                     Toast.Show(Loc.Format("HIGHCOMMAND_INV_MOVED", from, target.DisplayName, what));
+                    UiSound.Click();
                     lastSignature = int.MinValue;
                 }
             }

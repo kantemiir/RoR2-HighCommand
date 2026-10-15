@@ -13,8 +13,12 @@ namespace HighCommand.UI
     /// </summary>
     internal sealed class Minimap
     {
-        private static readonly Color ViewEdge = new Color(1f, 0.96f, 0.82f, 0.55f);
-        private static readonly Color ViewCorner = new Color(1f, 0.86f, 0.5f, 1f);
+        private const float FrameInset = 4f;   // the stock cluster frame is drawn round the map, the map inside it
+
+        private static readonly Color ViewEdge = new Color(1f, 1f, 1f, 0.5f);
+        private static readonly Color ViewCorner = Color.white;
+        private static readonly Color ViewTint = new Color(1f, 1f, 1f, 0.07f);
+        private static readonly Color MapBack = new Color(0.02f, 0.02f, 0.03f, 0.72f);
 
         private readonly RectTransform root;
         private readonly RectTransform mapRect;
@@ -30,15 +34,19 @@ namespace HighCommand.UI
 
         internal Minimap(Transform parent)
         {
-            RectTransform panel = UiKit.NewPanel("Minimap", parent, UiKit.PanelDark);
+            // a stock HUD cluster: the faint frame, a dark plate, the map inside
+            Image frame = UiKit.Sliced("Minimap", parent, HudArt.ClusterFrame, Theme.ClusterFrame);
+            RectTransform panel = frame.rectTransform;
             root = panel;
             float size = Settings.MinimapSize.Value;
-            UiKit.Place(panel, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 16f), new Vector2(size + 4f, size + 4f));
+            UiKit.Place(panel, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(Theme.Margin, Theme.Margin),
+                new Vector2(size + 2f * FrameInset, size + 2f * FrameInset));
+            Image back = UiKit.Sliced("Back", panel, HudArt.Plate, MapBack);
+            UiKit.Stretch(back.rectTransform, FrameInset, FrameInset, FrameInset, FrameInset);
 
-            // everything on the map is clipped to the cut-corner shape of the frame
-            Image clip = UiKit.NewImage("Clip", panel, UiKit.Shape(UiKit.InnerCut(UiKit.PanelCut, 2f)), Color.white);
-            clip.type = Image.Type.Sliced;
-            UiKit.Stretch(clip.rectTransform, 2, 2, 2, 2);
+            // everything on the map is clipped to the plate
+            Image clip = UiKit.NewImage("Clip", panel, UiKit.White, Color.white);
+            UiKit.Stretch(clip.rectTransform, FrameInset, FrameInset, FrameInset, FrameInset);
             var mask = clip.gameObject.AddComponent<Mask>();
             mask.showMaskGraphic = false;
 
@@ -54,19 +62,18 @@ namespace HighCommand.UI
             // the camera's view finder: a faint tint, hairline edges and bright corner brackets
             viewBox = UiKit.NewRect("ViewBox", mapRect);
             viewBox.sizeDelta = new Vector2(40f, 30f);
-            Image tint = UiKit.NewImage("Tint", viewBox, UiKit.White, new Color(1f, 0.96f, 0.82f, 0.08f));
+            Image tint = UiKit.NewImage("Tint", viewBox, UiKit.White, ViewTint);
             UiKit.Stretch(tint.rectTransform, 0, 0, 0, 0);
             AddEdges(viewBox);
 
-            nameText = UiKit.NewText("Name", clip.rectTransform, "", 12f, UiKit.Text, TextAlignmentOptions.TopLeft);
-            UiKit.Place(nameText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(14f, -5f), new Vector2(Mathf.Max(60f, size - 40f), 16f));
+            nameText = UiKit.NewText("Name", clip.rectTransform, "", Theme.SizeSmall, Theme.TextSub, TextAlignmentOptions.TopLeft);
+            UiKit.Place(nameText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(6f, -4f), new Vector2(Mathf.Max(60f, size - 30f), 18f));
             nameText.enableAutoSizing = true;
-            nameText.fontSizeMin = 8f;
-            nameText.fontSizeMax = 12f;
-            nameText.color = new Color(0.82f, 0.9f, 0.96f, 0.85f);
+            nameText.fontSizeMin = 9f;
+            nameText.fontSizeMax = Theme.SizeSmall;
 
-            TextMeshProUGUI north = UiKit.NewText("North", clip.rectTransform, "N", 11f, new Color(0.82f, 0.9f, 0.96f, 0.6f), TextAlignmentOptions.TopRight);
-            UiKit.Place(north.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-6f, -5f), new Vector2(20f, 14f));
+            TextMeshProUGUI north = UiKit.NewText("North", clip.rectTransform, "N", Theme.SizeSmall, Theme.TextHud, TextAlignmentOptions.TopRight);
+            UiKit.Place(north.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-6f, -4f), new Vector2(20f, 18f));
 
             ClientInput.RegisterUiHitTest(Contains);
         }
@@ -179,15 +186,21 @@ namespace HighCommand.UI
             viewBox.localRotation = Quaternion.Euler(0f, 0f, -yaw);
         }
 
-        private static readonly Color MarkChest = new Color(1f, 0.82f, 0.3f, 1f);
-        private static readonly Color MarkChestPoor = new Color(0.62f, 0.5f, 0.3f, 0.9f);
-        private static readonly Color MarkShop = new Color(1f, 0.6f, 0.25f, 1f);
-        private static readonly Color MarkLunar = new Color(0.55f, 0.75f, 1f, 1f);
-        private static readonly Color MarkShrine = new Color(0.8f, 0.55f, 1f, 1f);
-        private static readonly Color MarkDrone = new Color(0.35f, 0.95f, 0.95f, 1f);
-        private static readonly Color MarkPrinter = new Color(0.92f, 0.92f, 0.92f, 1f);
-        private static readonly Color MarkPortal = new Color(0.75f, 0.5f, 1f, 1f);
-        private static readonly Color MarkTeleporter = new Color(1f, 0.45f, 0.35f, 1f);
+        // the game's colours: an interactable's ping, money, the lunar and the void texts, the teleporter
+        private static readonly Color MarkChest = new Color32(235, 232, 122, 255);
+        private static readonly Color MarkChestPoor = Theme.TextMuted;
+        private static readonly Color MarkShop = Theme.Damage;
+        private static readonly Color MarkLunar = new Color32(184, 196, 255, 255);
+        private static readonly Color MarkShrine = new Color32(237, 127, 205, 255);
+        private static readonly Color MarkDrone = Theme.Utility;
+        private static readonly Color MarkPrinter = Theme.TextSub;
+        private static readonly Color MarkPortal = new Color32(172, 104, 248, 255);
+        private static readonly Color MarkTeleporter = new Color32(231, 84, 58, 255);
+
+        private static readonly Color DotHero = new Color32(125, 224, 66, 255);   // the stock health bar's green
+        private static readonly Color DotAlly = Theme.Utility;
+        private static readonly Color DotEnemy = new Color32(231, 84, 58, 255);
+        private static readonly Color DotBoss = new Color32(255, 128, 0, 255);
 
         /// <summary>Marks for the objects the army has found and not used up yet (see <see cref="Scouting"/>).</summary>
         private void RefreshMarks(Rect r)
@@ -272,13 +285,13 @@ namespace HighCommand.UI
                     Army.Hero hero = Army.HeroMarker.Of(b);
                     bool isHero = hero != null;
                     selected = isHero && selection != null && selection.Contains(hero);
-                    color = isHero ? new Color(0.4f, 1f, 0.5f, 1f) : new Color(0.35f, 0.7f, 1f, 0.95f);
+                    color = isHero ? DotHero : DotAlly;
                     size = isHero ? 11f : 6f;
                 }
                 else if (team == TeamIndex.Monster || team == TeamIndex.Lunar || team == TeamIndex.Void)
                 {
                     bool boss = b.isChampion || b.isBoss;
-                    color = boss ? new Color(1f, 0.6f, 0.15f, 1f) : new Color(1f, 0.28f, 0.24f, 0.95f);
+                    color = boss ? DotBoss : DotEnemy;
                     size = boss ? 13f : 6f;
                 }
                 else continue;

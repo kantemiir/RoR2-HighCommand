@@ -1,105 +1,116 @@
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace HighCommand.UI
 {
     /// <summary>Short messages near the top of the screen ("Stance: defensive", "Not enough gold" ...).</summary>
     internal static class Toast
     {
-        private static readonly Queue<string> Pending = new Queue<string>();
-
-        internal static void Show(string message)
+        private struct Message
         {
-            if (string.IsNullOrEmpty(message)) return;
-            Pending.Enqueue(message);
-            while (Pending.Count > 4) Pending.Dequeue();
+            internal string text;
+            internal bool error;
         }
 
-        /// <summary>A message about something that did not work: same toast, plus the game's "cannot afford" sound.</summary>
+        private static readonly Queue<Message> Pending = new Queue<Message>();
+
+        internal static void Show(string message) => Enqueue(message, false);
+
+        /// <summary>Something did not work: the line is red and the game's "cannot afford" sound plays.</summary>
         internal static void Error(string message)
         {
             if (string.IsNullOrEmpty(message)) return;
-            Show(message);
-            try { RoR2.Util.PlaySound("Play_UI_insufficient_funds", RoR2.RoR2Application.instance ? RoR2.RoR2Application.instance.gameObject : null); }
-            catch (System.Exception) { /* sounds are a nicety */ }
+            Enqueue(message, true);
+            UiSound.Error();
         }
 
-        internal static bool TryTake(out string message)
+        private static void Enqueue(string message, bool error)
         {
-            if (Pending.Count > 0) { message = Pending.Dequeue(); return true; }
+            if (string.IsNullOrEmpty(message)) return;
+            Pending.Enqueue(new Message { text = message, error = error });
+            while (Pending.Count > 4) Pending.Dequeue();
+        }
+
+        internal static bool TryTake(out string message, out bool error)
+        {
+            if (Pending.Count > 0)
+            {
+                Message m = Pending.Dequeue();
+                message = m.text;
+                error = m.error;
+                return true;
+            }
             message = null;
+            error = false;
             return false;
         }
 
         internal static void Clear() => Pending.Clear();
     }
 
-    /// <summary>Draws the toast messages: one at a time, fading out.</summary>
+    /// <summary>
+    /// Draws the messages one at a time on the strip the game uses for the stage name: black, fading out at both ends,
+    /// the text in the middle. It eases in, holds, and fades.
+    /// </summary>
     internal sealed class ToastView
     {
-        private static readonly Color PlateColor = new Color(0.04f, 0.05f, 0.07f, 0.86f);
+        private const float Top = 122f;
+        private const float StripH = 46f;
+        private const float EndsW = 140f;   // the faded ends of the strip on each side of the text
 
-        private readonly RectTransform plate;
-        private readonly UnityEngine.UI.Image plateImage;
-        private readonly UnityEngine.UI.Image bar;
+        private readonly RectTransform strip;
+        private readonly CanvasGroup group;
         private readonly TextMeshProUGUI text;
-        private float shownUntil;
-        private float fadeStart;
+        private float born = -100f;
         private float lastAlpha = -1f;
 
         internal ToastView(Transform parent)
         {
-            plate = UiKit.NewRect("Toast", parent);
-            UiKit.Place(plate, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -120f), new Vector2(300f, 44f));
-            plateImage = plate.gameObject.AddComponent<UnityEngine.UI.Image>();
-            UiKit.StyleOutline(plateImage, 9f);
-            plateImage.color = PlateColor;
-            plateImage.raycastTarget = false;
-
-            bar = UiKit.NewImage("Bar", plate, UiKit.White, UiKit.Accent);
-            UiKit.Place(bar.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(10f, 0f), new Vector2(3f, 22f));
-
-            text = UiKit.NewText("Text", plate, "", 25f, UiKit.Text, TextAlignmentOptions.Center);
-            UiKit.Stretch(text.rectTransform, 22, 0, 14, 0);
-            plate.gameObject.SetActive(false);
+            Image back = UiKit.Sliced("Toast", parent, HudArt.BackdropFaded, Theme.Backdrop);
+            strip = back.rectTransform;
+            UiKit.Place(strip, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -Top), new Vector2(400f, StripH));
+            group = strip.gameObject.AddComponent<CanvasGroup>();
+            group.blocksRaycasts = false;
+            text = UiKit.NewText("Text", strip, "", Theme.SizeName, Theme.Text, TextAlignmentOptions.Center);
+            UiKit.Stretch(text.rectTransform, EndsW * 0.5f, 0f, EndsW * 0.5f, 0f);
+            strip.gameObject.SetActive(false);
         }
+
+        private static float Life => Theme.ToastIn + Theme.ToastHold + Theme.ToastOut;
 
         internal void Tick()
         {
             float now = Time.unscaledTime;
-            if (now >= shownUntil && Toast.TryTake(out string next))
+            // a new message replaces the one on screen once that one has been readable for a moment
+            if (now - born >= Theme.ToastIn + Theme.ToastHold * 0.5f && Toast.TryTake(out string next, out bool error))
             {
                 text.text = next;
-                float width = Mathf.Clamp(text.GetPreferredValues(next).x + 52f, 180f, 1400f);
-                plate.sizeDelta = new Vector2(width, 44f);
-                plate.gameObject.SetActive(true);
-                plate.SetAsLastSibling(); // above an open barracks / item panel
-                fadeStart = now + 1.4f;
-                shownUntil = now + 1.9f;
+                text.color = error ? Theme.Death : Theme.Text;
+                float width = Mathf.Clamp(text.GetPreferredValues(next).x + EndsW, 320f, 1500f);
+                strip.sizeDelta = new Vector2(width, StripH);
+                strip.gameObject.SetActive(true);
+                strip.SetAsLastSibling(); // above an open window
+                born = now;
                 lastAlpha = -1f;
             }
 
-            if (!plate.gameObject.activeSelf) return;
-            if (now >= shownUntil) { plate.gameObject.SetActive(false); return; }
-            float alpha = now < fadeStart ? 1f : Mathf.Clamp01(1f - (now - fadeStart) / (shownUntil - fadeStart));
-            if (Mathf.Abs(alpha - lastAlpha) < 0.01f) return;
+            if (!strip.gameObject.activeSelf) return;
+            float age = now - born;
+            if (age >= Life) { strip.gameObject.SetActive(false); return; }
+            float alpha = age < Theme.ToastIn ? age / Theme.ToastIn
+                : age < Theme.ToastIn + Theme.ToastHold ? 1f
+                : 1f - (age - Theme.ToastIn - Theme.ToastHold) / Theme.ToastOut;
+            alpha = Mathf.Clamp01(alpha);
+            if (alpha == lastAlpha || (Mathf.Abs(alpha - lastAlpha) < 0.02f && alpha < 1f && alpha > 0f)) return;
             lastAlpha = alpha;
-
-            Color c = PlateColor;
-            c.a *= alpha;
-            plateImage.color = c;
-            Color a = UiKit.Accent;
-            a.a = alpha;
-            bar.color = a;
-            Color t = UiKit.Text;
-            t.a = alpha;
-            text.color = t;
+            group.alpha = alpha;
         }
 
         internal void Destroy()
         {
-            if (plate) Object.Destroy(plate.gameObject);
+            if (strip) Object.Destroy(strip.gameObject);
         }
     }
 }

@@ -343,6 +343,36 @@ namespace HighCommand.UI
             return img;
         }
 
+        /// <summary>A 9-sliced image (frames and plates keep their edges at any size).</summary>
+        internal static Image Sliced(string name, Transform parent, Sprite sprite, Color color)
+        {
+            Image img = NewImage(name, parent, sprite, color);
+            img.type = Image.Type.Sliced;
+            return img;
+        }
+
+        /// <summary>A key as the interface prints it: "1" not "Alpha1", "[" not "LeftBracket", "PgUp", "LAlt".</summary>
+        internal static string KeyText(KeyCode key)
+        {
+            switch (key)
+            {
+                case KeyCode.None: return "";
+                case KeyCode.LeftBracket: return "[";
+                case KeyCode.RightBracket: return "]";
+                case KeyCode.PageUp: return "PgUp";
+                case KeyCode.PageDown: return "PgDn";
+                case KeyCode.LeftAlt: return "LAlt";
+                case KeyCode.RightAlt: return "RAlt";
+                case KeyCode.LeftShift: return "LShift";
+                case KeyCode.LeftControl: return "LCtrl";
+                case KeyCode.Backspace: return "Bksp";
+                case KeyCode.Escape: return "Esc";
+                default:
+                    string s = key.ToString();
+                    return s.StartsWith("Alpha") ? s.Substring(5) : s;
+            }
+        }
+
         internal static RawImage NewRawImage(string name, Transform parent, Texture texture, Color color)
         {
             RectTransform rt = NewRect(name, parent);
