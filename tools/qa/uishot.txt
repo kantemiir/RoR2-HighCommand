@@ -45,14 +45,11 @@ hc_key F1
 hc_key Alpha1
 @wait 1
 hc_screenshot ui_cast
-@log === V8 the orders list (click on the Orders button of the card, bottom right)
+@log === V8 the orders of the card, bottom right: Hold (R) under the pointer with its tooltip
 hc_select all
-hc_click 1657 127
-@wait 1
-hc_mouse 1700 400
-@wait 0.5
+hc_mouse 1500 79
+@wait 0.6
 hc_screenshot ui_orders
-hc_key Escape
 hc_input_end
 @wait 1
 @log === V9 health bars close up, in a fight

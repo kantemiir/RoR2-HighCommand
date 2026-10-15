@@ -27,6 +27,11 @@ hc_select all
 hc_drop_random 4
 @wait 1.2
 hc_screenshot ua_all
+@log === U3b hurt heroes with barrier on their cards
+hc_hurt 0.55
+hc_barrier 0.4
+@wait 0.8
+hc_screenshot ua_barrier
 @log === U4 tooltips: an order, an ability, a hero card, a skill, the purse, an item
 hc_mouse 1479 109
 @wait 0.6
@@ -89,6 +94,18 @@ hc_cam follow
 hc_cam dist 30
 @wait 8
 hc_screenshot ua_fight
+@log === U10b the teleporter: charging with the boss, then charged
+hc_kill_enemies
+hc_revive
+hc_warp tp
+@wait 2
+hc_tp
+@wait 8
+hc_cam army
+hc_screenshot ua_tele
+hc_tp_charge
+@wait 4
+hc_screenshot ua_tele_done
 @log === U11 every hero fallen
 hc_gold set 0
 hc_kill_heroes

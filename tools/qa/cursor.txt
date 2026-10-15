@@ -1,6 +1,6 @@
-﻿# Context pointer badge, path preview and the orders list of the command card (screenshots cur_*.png).
-# Screen coordinates are 1920x1080 with the origin at the bottom left. The orders button is at (1657, 127); the list
-# opens above it, its rows (8, 32 px each, first = attack-move) are at x = 1686, y = 399 - 32 * row.
+﻿# Context pointer badge, path preview and the order icons of the command card (screenshots cur_*.png).
+# Screen coordinates are 1920x1080 with the origin at the bottom left. The order icons sit in a 5 x 3 grid bottom
+# right: columns at x = 1460 + 42 * column, rows at y = 120 - 42 * row (row 0: attack-move Q, focus F ...).
 @wait 4
 @log === C0 run start
 hc_start
@@ -59,22 +59,21 @@ hc_screenshot cur_mode
 hc_click 960 540 1
 @wait 0.5
 hc_ping
-@log === C8 the orders list: open, screenshot, click Hold (row 3)
-hc_click 1657 127
-@wait 1
-hc_ping
+@log === C8 Hold from the command card (the R icon, row 2 column 2, bottom right)
+hc_mouse 1500 79
+@wait 0.6
 hc_screenshot cur_menu
-hc_click 1686 303
+hc_click 1500 79
 @wait 1
 hc_ping
 hc_status
-@log === C9 the list again, closed by Esc (the pause key)
-hc_click 1657 127
+@log === C9 attack-move armed from its icon (Q, row 1 column 1), cancelled by Esc (the pause key)
+hc_click 1460 120
 @wait 1
 hc_ping
 pause
 @wait 1
-@log (the list must be closed and the game NOT paused)
+@log (the mode must be None and the game NOT paused)
 hc_ping
 @log === END
 hc_input_end

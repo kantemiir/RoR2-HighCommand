@@ -85,10 +85,10 @@ namespace HighCommand.Dev
             if (id) sb.AppendLine($"{indent}NetworkIdentity: assetId={id.assetId} netId={id.netId}");
         }
 
-        [ConCommand(commandName = "hc_dump_ui", flags = HostOnly, helpText = "hc_dump_ui <name part> [depth]: prints the hierarchy of objects whose name contains the text.")]
-        private static void CcDumpUi(ConCommandArgs args)
+        [ConCommand(commandName = "hc_dump_scene", flags = HostOnly, helpText = "hc_dump_scene <name part> [depth]: prints the hierarchy of scene objects whose name contains the text.")]
+        private static void CcDumpScene(ConCommandArgs args)
         {
-            if (args.Count < 1) throw new ConCommandException("Usage: hc_dump_ui <name part> [depth]");
+            if (args.Count < 1) throw new ConCommandException("Usage: hc_dump_scene <name part> [depth]");
             string part = args.GetArgString(0);
             int depth = args.Count > 1 ? args.GetArgInt(1) : 4;
 
@@ -166,14 +166,15 @@ namespace HighCommand.Dev
             Debug.Log(sb.ToString());
         }
 
-        [ConCommand(commandName = "hc_screenshot", flags = HostOnly, helpText = "hc_screenshot <name>: saves a screenshot (with the mod's UI) to the plugin's folder.")]
+        [ConCommand(commandName = "hc_screenshot", flags = HostOnly, helpText = "hc_screenshot <name> [size factor]: saves a screenshot (with the mod's UI) to the plugin's folder; a factor of 2 renders 1080p as 4K.")]
         private static void CcScreenshot(ConCommandArgs args)
         {
             string name = args.Count > 0 ? args.GetArgString(0) : "shot";
+            int factor = args.Count > 1 ? Mathf.Clamp(args.GetArgInt(1), 1, 4) : 1;
             string dir = System.IO.Path.Combine(Plugin.PluginDirectory, "screenshots");
             System.IO.Directory.CreateDirectory(dir);
             string path = System.IO.Path.Combine(dir, name + ".png");
-            ScreenCapture.CaptureScreenshot(path);
+            ScreenCapture.CaptureScreenshot(path, factor);
             Debug.Log("HighCommand: screenshot -> " + path);
         }
 
@@ -1006,6 +1007,15 @@ namespace HighCommand.Dev
 
         [ConCommand(commandName = "hc_input_end", flags = HostOnly, helpText = "Ends synthetic input; the real mouse works again.")]
         private static void CcInputEnd(ConCommandArgs args) => Client.ClientInput.EndSynthetic();
+
+        // Switching the window mode or size in a script makes the game open its pause screen: the run goes on after it.
+        [ConCommand(commandName = "hc_unpause", flags = HostOnly, helpText = "Closes the game's pause screen if it is open (scripts that change the window).")]
+        private static void CcUnpause(ConCommandArgs args)
+        {
+            bool open = PauseManager.PauseScreenIsOpen();
+            if (open) PauseManager.ClosePauseScreen(shouldResume: true);
+            Debug.Log("HighCommand: pause screen " + (open ? "closed" : "was not open"));
+        }
 
         private static bool HasFlag(ConCommandArgs args, int fromIndex, string flag)
         {

@@ -161,6 +161,24 @@ namespace HighCommand.Dev
             Debug.Log($"HighCommand: {n} hero(es) at {share:P0} health.");
         }
 
+        [ConCommand(commandName = "hc_barrier", flags = HostOnly,
+            helpText = "hc_barrier <fraction 0..1>: gives every living hero barrier worth that share of its health (tests of the health bars).")]
+        private static void CcBarrier(ConCommandArgs args)
+        {
+            HighCommandRun run = HighCommandRun.Instance;
+            if (!NetworkServer.active || run == null) throw new ConCommandException("Not in a High Command run.");
+            float share = Mathf.Clamp01(args.GetArgFloat(0));
+            int n = 0;
+            foreach (Hero h in run.Army.Heroes)
+            {
+                HealthComponent hc = h.Health;
+                if (!hc || !hc.alive) continue;
+                hc.AddBarrier(hc.fullCombinedHealth * share);
+                n++;
+            }
+            Debug.Log($"HighCommand: {n} hero(es) got {share:P0} barrier.");
+        }
+
         [ConCommand(commandName = "hc_equip", flags = HostOnly,
             helpText = "hc_equip <EquipmentName> [heroId]: puts a piece of equipment into the active slot of every hero (or one), for tests.")]
         private static void CcEquip(ConCommandArgs args)

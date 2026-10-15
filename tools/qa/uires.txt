@@ -1,0 +1,110 @@
+# The interface at other window sizes and scales (rs_*.png): 16:9 small, 4:3, 21:9 in a window, 4K by supersampling,
+# the mod's own UiScale and the game's HUD scale. qa-run.ps1 puts the game's resolution and window mode back after.
+@wait 4
+@log === S1 run start, a few heroes, items
+hc_start
+@scene lobby
+@wait 3
+pregame_start_run
+@run
+@wait 20
+hc_gold 6000
+hc_recruit Commando
+hc_recruit Huntress
+hc_recruit Mage
+hc_recruit Engi
+hc_drop_random 18
+@wait 20
+hc_cam army
+hc_cam dist 45
+hc_select all
+@wait 1
+@log === S2 4K: 1080p rendered twice as large
+hc_screenshot rs_4k 2
+@wait 1
+@log === S3 1280x720 (16:9, small)
+window_mode Window
+resolution 1280x720x60
+@wait 2
+hc_unpause
+@wait 1.5
+hc_screenshot rs_720
+hc_key B
+@wait 1
+hc_screenshot rs_720_barracks
+hc_key B
+@wait 0.5
+hc_key I
+@wait 1
+hc_screenshot rs_720_items
+hc_key I
+@wait 0.5
+hc_key F1
+@wait 1
+hc_screenshot rs_720_help
+hc_key F1
+@wait 0.5
+@log === S4 1440x1080 (4:3)
+resolution 1440x1080x60
+@wait 2
+hc_unpause
+@wait 1.5
+hc_screenshot rs_43
+hc_key B
+@wait 1
+hc_screenshot rs_43_barracks
+hc_key B
+@wait 0.5
+hc_key I
+@wait 1
+hc_screenshot rs_43_items
+hc_key I
+@wait 0.5
+@log === S5 1920x822 (21:9)
+resolution 1920x822x60
+@wait 2
+hc_unpause
+@wait 1.5
+hc_screenshot rs_219
+hc_key B
+@wait 1
+hc_screenshot rs_219_barracks
+hc_key B
+@wait 0.5
+hc_key F1
+@wait 1
+hc_screenshot rs_219_help
+hc_key F1
+@wait 0.5
+@log === S6 1920x1080 with the mod's interface scale 0.8 and 1.3
+resolution 1920x1080x60
+@wait 2
+hc_unpause
+@wait 1.5
+hc_cfg uiscale 0.8
+@wait 1.5
+hc_screenshot rs_scale08
+hc_cfg uiscale 1.3
+@wait 1.5
+hc_screenshot rs_scale13
+hc_key I
+@wait 1
+hc_screenshot rs_scale13_items
+hc_key I
+@wait 0.5
+hc_cfg uiscale 1
+@log === S7 the game's own HUD scale at 70 and 130
+hud_scale 70
+@wait 1.5
+hc_screenshot rs_hud70
+hud_scale 130
+@wait 1.5
+hc_screenshot rs_hud130
+hud_scale 100
+@wait 1
+@log === END
+hc_status
+disconnect
+@norun
+@wait 4
+@quit
